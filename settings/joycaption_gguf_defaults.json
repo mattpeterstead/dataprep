@@ -1,0 +1,13 @@
+{
+  "repo_id": "concedo/llama-joycaption-beta-one-hf-llava-mmproj-gguf",
+  "mmproj_file": "llama-joycaption-beta-one-llava-mmproj-model-f16.gguf",
+  "models": {
+    "Q4_K": "Llama-Joycaption-Beta-One-Hf-Llava-Q4_K.gguf",
+    "Q8_0": "Llama-Joycaption-Beta-One-Hf-Llava-Q8_0.gguf",
+    "F16": "Llama-Joycaption-Beta-One-Hf-Llava-F16.gguf"
+  },
+  "koboldcpp_exe": "tools\\koboldcpp\\koboldcpp.exe",
+  "model_dir": "models\\joycaption_gguf",
+  "api_host": "127.0.0.1",
+  "api_port": 5001
+}

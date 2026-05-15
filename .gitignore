@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime output and local state
+logs/
+BACKUPS/
+__upload_test/
+settings/.dataset_forge_last_app
+
+# Downloaded model files and external binaries
+models/
+wd14_models/
+tools/koboldcpp/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

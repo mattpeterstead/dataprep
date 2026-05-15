@@ -1,0 +1,17 @@
+flask
+pillow
+requests
+psutil
+numpy
+pillow-avif-plugin
+huggingface_hub
+onnxruntime
+transformers>=4.57.0,<5.0.0
+safetensors
+accelerate
+timm
+einops
+qwen-vl-utils
+torch
+torchvision
+torchaudio
