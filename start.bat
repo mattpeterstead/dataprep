@@ -22,18 +22,23 @@ set "MODE=image"
 if exist "%LAST_FILE%" (
   set /p MODE=<"%LAST_FILE%"
 )
-if /i not "%MODE%"=="video" set "MODE=image"
+if /i not "%MODE%"=="video" if /i not "%MODE%"=="simple" set "MODE=image"
 
 if /i "%MODE%"=="video" (
   set "APP=%ROOT%videoprep.py"
   set "URL=http://127.0.0.1:5001/"
   set "PORT=5001"
   set "LABEL=Video"
+) else if /i "%MODE%"=="simple" (
+  set "APP=%ROOT%imageprep_simple.py"
+  set "URL=http://127.0.0.1:5000/"
+  set "PORT=5000"
+  set "LABEL=Image Simple"
 ) else (
   set "APP=%ROOT%imageprep.py"
   set "URL=http://127.0.0.1:5000/"
   set "PORT=5000"
-  set "LABEL=Image"
+  set "LABEL=Image Advanced"
 )
 
 title Dataset Forge - %LABEL%
@@ -58,7 +63,7 @@ if not exist "%APP%" (
   exit /b 1
 )
 
-"%PYTHON%" -B -c "import flask, PIL, requests" >nul 2>&1
+"%PYTHON%" -B -c "import flask, PIL, requests, psutil, numpy, huggingface_hub, onnxruntime, pillow_avif, transformers, torch, torchvision, accelerate, qwen_vl_utils, safetensors, timm, einops, cv2, sentencepiece, google.protobuf" >nul 2>&1
 if errorlevel 1 (
   echo.
   echo [ERROR] Required Python packages are missing from:

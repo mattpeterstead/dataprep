@@ -14,7 +14,6 @@ import time
 import traceback
 import socket
 import hashlib
-import io
 from pathlib import Path
 from collections import defaultdict
 
@@ -63,12 +62,6 @@ CATEGORY_DEFS = [
 ]
 CATEGORY_NAME_TO_ICON = {item["name"]: item["icon"] for item in CATEGORY_DEFS}
 DEFAULT_CATEGORY = "Undefined"
-DEFAULT_CATEGORY_COLORS = [
-    "#22c55e", "#16a34a", "#15803d", "#34d399",
-    "#10b981", "#0f766e", "#14b8a6", "#06b6d4",
-    "#eab308", "#ca8a04", "#a16207", "#ef4444",
-    "#dc2626", "#991b1b", "#9ca3af",
-]
 BUCKET_STEP = 64
 
 
@@ -214,7 +207,6 @@ message = ""
 folder_name = ""
 selected_crop_base = 1024
 category_assignments = {}
-category_folders = []
 
 JOY_MODAL_OPEN_KEY = "caption_app_joy_modal_open"
 JOY_GGUF_DEFAULTS_PATH = SETTINGS_DIR / "joycaption_gguf_defaults.json"
@@ -276,7 +268,6 @@ message = ""
 folder_name = ""
 selected_crop_base = 1024
 category_assignments = {}
-category_folders = []
 joycaption_status = {
     "running": False,
     "status": "Idle",
@@ -1554,7 +1545,7 @@ def build_pair_dict(index, img_name, text):
         "aspect_label": aspect_label,
         "ratio_display": ratio_display,
         "category": category,
-        "category_icon": category_icon_for_name(category),
+        "category_icon": CATEGORY_NAME_TO_ICON.get(category, CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY]),
     }
 
 
@@ -1562,50 +1553,7 @@ def get_category_meta_path(folder):
     return Path(folder) / CATEGORY_META_FILENAME
 
 
-def default_category_folders():
-    folders = []
-    columns = 5
-    for i, item in enumerate(CATEGORY_DEFS):
-        folders.append({
-            "name": item["name"],
-            "icon": item["icon"],
-            "color": DEFAULT_CATEGORY_COLORS[i % len(DEFAULT_CATEGORY_COLORS)],
-            "x": (i % columns) * 112,
-            "y": (i // columns) * 120,
-        })
-    return folders
-
-
-def category_names_from_folders(folders=None):
-    source = folders if folders is not None else category_folders
-    if not source:
-        source = default_category_folders()
-    names = set()
-    for item in source:
-        name = item.get("name") if isinstance(item, dict) else None
-        if name:
-            names.add(name)
-    return names
-
-
-def category_icon_for_name(name):
-    for item in category_folders:
-        if item.get("name") == name:
-            return item.get("icon") or CATEGORY_NAME_TO_ICON.get(DEFAULT_CATEGORY)
-    return CATEGORY_NAME_TO_ICON.get(name, CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY])
-
-
-def is_valid_category_icon(icon):
-    raw = str(icon or "")
-    icon = Path(raw).name
-    if not icon or icon != raw:
-        return False
-    if Path(icon).suffix.lower() not in IMAGE_EXTENSIONS:
-        return False
-    return (APP_DIR / "images" / icon).exists()
-
-
-def normalize_category_name(name, folders=None):
+def normalize_category_name(name):
     legacy_map = {
         "Front Portrait": "Close-up Front",
         "Profile Portrait": "Close-up Right",
@@ -1619,107 +1567,58 @@ def normalize_category_name(name, folders=None):
     }
     if name in legacy_map:
         name = legacy_map[name]
-    if name in category_names_from_folders(folders):
+    if name in CATEGORY_NAME_TO_ICON:
         return name
     return DEFAULT_CATEGORY
 
 
-def normalize_category_folder(item, index, existing_names):
-    source = item if isinstance(item, dict) else {}
-    fallback = CATEGORY_DEFS[index]["name"] if index < len(CATEGORY_DEFS) else f"Category {index + 1}"
-    raw_name = str(source.get("name") or fallback).strip() or fallback
-    name = raw_name
-    counter = 2
-    while name in existing_names and name != DEFAULT_CATEGORY:
-        name = f"{raw_name} {counter}"
-        counter += 1
-    existing_names.add(name)
-    icon = str(source.get("icon") or CATEGORY_NAME_TO_ICON.get(name) or CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY])
-    known_icons = {entry["icon"] for entry in CATEGORY_DEFS}
-    if icon not in known_icons and not is_valid_category_icon(icon):
-        icon = CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY]
-    color = str(source.get("color") or DEFAULT_CATEGORY_COLORS[index % len(DEFAULT_CATEGORY_COLORS)])
-    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
-        color = DEFAULT_CATEGORY_COLORS[index % len(DEFAULT_CATEGORY_COLORS)]
-    try:
-        x = int(source.get("x", (index % 5) * 112))
-        y = int(source.get("y", (index // 5) * 120))
-    except Exception:
-        x = (index % 5) * 112
-        y = (index // 5) * 120
-    return {
-        "name": name,
-        "icon": icon,
-        "color": color,
-        "x": max(0, x),
-        "y": max(0, y),
-    }
-
-
-def normalize_category_folders(raw_folders):
-    source = raw_folders if isinstance(raw_folders, list) else default_category_folders()
-    folders = []
-    existing_names = set()
-    for i, item in enumerate(source):
-        folder = normalize_category_folder(item, i, existing_names)
-        folders.append(folder)
-    if not any(item.get("name") == DEFAULT_CATEGORY for item in folders):
-        undefined = normalize_category_folder(
-            {"name": DEFAULT_CATEGORY, "icon": CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY], "color": "#9ca3af"},
-            len(folders),
-            existing_names,
-        )
-        folders.append(undefined)
-    return folders
-
-
-def load_category_state(folder):
+def load_category_assignments(folder):
     if not folder:
-        return {}, default_category_folders()
+        return {}
     path = get_category_meta_path(folder)
     if not path.exists():
-        return {}, default_category_folders()
+        return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {}, default_category_folders()
+        return {}
     if not isinstance(raw, dict):
-        return {}, default_category_folders()
-    has_new_schema = isinstance(raw.get("assignments"), dict) or isinstance(raw.get("folders"), list)
-    folders = normalize_category_folders(raw.get("folders") if has_new_schema else None)
-    raw_assignments = raw.get("assignments") if has_new_schema else raw
+        return {}
+    raw_assignments = raw.get("assignments") if isinstance(raw.get("assignments"), dict) else raw
     if not isinstance(raw_assignments, dict):
-        raw_assignments = {}
+        return {}
     out = {}
     for key, value in raw_assignments.items():
         if isinstance(key, str):
-            out[key] = normalize_category_name(value, folders)
-    return out, folders
-
-
-def load_category_assignments(folder):
-    return load_category_state(folder)[0]
-
-
-def save_category_state(folder, assignments, folders):
-    if not folder:
-        return
-    path = get_category_meta_path(folder)
-    clean_folders = normalize_category_folders(folders)
-    clean = {}
-    for key, value in sorted(assignments.items()):
-        if isinstance(key, str):
-            clean[key] = normalize_category_name(value, clean_folders)
-    payload = {
-        "version": 2,
-        "folders": clean_folders,
-        "assignments": clean,
-    }
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            out[key] = normalize_category_name(value)
+    return out
 
 
 def save_category_assignments(folder, assignments):
-    save_category_state(folder, assignments, category_folders)
+    if not folder:
+        return
+    path = get_category_meta_path(folder)
+    existing = {}
+    if path.exists():
+        try:
+            raw_existing = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(raw_existing, dict):
+                existing = raw_existing
+        except Exception:
+            existing = {}
+    clean = {}
+    for key, value in sorted(assignments.items()):
+        if isinstance(key, str):
+            clean[key] = normalize_category_name(value)
+    if isinstance(existing.get("folders"), list) or isinstance(existing.get("assignments"), dict):
+        payload = {
+            "version": existing.get("version", 2),
+            "folders": existing.get("folders", []),
+            "assignments": clean,
+        }
+    else:
+        payload = clean
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def get_pair_category(img_name):
@@ -1737,28 +1636,17 @@ def ensure_missing_txt(folder):
     return missing
 
 
-def image_names_for_category(category=None):
-    category = normalize_category_name(category) if category else None
-    names = []
-    for img_name, _ in pairs_cache:
-        if not pair_exists(current_folder, img_name):
-            continue
-        if category and get_pair_category(img_name) != category:
-            continue
-        names.append(img_name)
-    return names
-
-
-def replace_in_all_captions(folder, match_string, replace_with, use_regex=False, category=None):
+def replace_in_all_captions(folder, match_string, replace_with, use_regex=False):
     if not match_string:
         raise ValueError("Search string cannot be empty.")
 
     total_count = 0
 
-    for img_name in image_names_for_category(category):
-        path = os.path.splitext(os.path.join(folder, img_name))[0] + ".txt"
-        if not os.path.exists(path):
+    for fname in os.listdir(folder):
+        if not fname.lower().endswith(".txt"):
             continue
+
+        path = os.path.join(folder, fname)
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -1792,16 +1680,15 @@ def replace_in_all_captions(folder, match_string, replace_with, use_regex=False,
     return total_count
 
 
-def count_in_all_captions(folder, count_string, category=None):
+def count_in_all_captions(folder, count_string):
     regex = re.compile(count_string, re.MULTILINE | re.DOTALL)
     count = 0
-    for img_name in image_names_for_category(category):
-        path = os.path.splitext(os.path.join(folder, img_name))[0] + ".txt"
-        if not os.path.exists(path):
-            continue
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        count += len(regex.findall(content))
+    for fname in os.listdir(folder):
+        if fname.lower().endswith(".txt"):
+            path = os.path.join(folder, fname)
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            count += len(regex.findall(content))
     return count
 
 TEMPLATE = r'''
@@ -1966,7 +1853,6 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   gap: 10px;
   align-items: center;
   margin-bottom: 6px;
-  user-select: none;
 }
 .filename {
   font-weight: 700;
@@ -2335,8 +2221,6 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
-  cursor: move;
-  user-select: none;
 }
 .joy-grid {
   display: grid;
@@ -2876,7 +2760,6 @@ body.dark {
 
 html {
   background: #080808;
-  height: 100%;
 }
 
 body {
@@ -2884,7 +2767,6 @@ body {
   font-size: 13px;
   line-height: 1.45;
   letter-spacing: 0;
-  min-height: 100%;
 }
 
 button,
@@ -3449,7 +3331,7 @@ body.dark ::-webkit-scrollbar-thumb:hover {
 }
 
 .top > .row:first-of-type {
-  padding-right: 190px;
+  padding-right: 214px;
 }
 
 .row {
@@ -3590,9 +3472,8 @@ body.dark ::-webkit-scrollbar-thumb:hover {
   z-index: 150;
   min-height: 28px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  gap: 16px;
   padding: 5px 12px;
   background: #141414;
   border-top: 1px solid var(--border);
@@ -3601,453 +3482,9 @@ body.dark ::-webkit-scrollbar-thumb:hover {
   font-weight: 650;
   box-shadow: 0 -1px 0 rgba(255,255,255,.03);
 }
-.statusbar-folder {
-  flex: 0 1 38%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.statusbar-count {
-  flex: 0 0 auto;
-}
-.statusbar-message {
-  flex: 1 1 auto;
-  min-width: 80px;
-  overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg);
-}
-.category-taskbar {
-  position: relative;
-  z-index: 1;
-  height: 28px;
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-  margin-top: 0;
-  margin-bottom: 0;
-  padding: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  background: #141414;
-}
-.category-taskbar-tab {
-  flex: 0 0 auto;
-  width: 168px;
-  height: 28px;
-  padding: 0 7px;
-  border: 1px solid var(--border);
-  border-bottom: 0;
-  border-radius: 7px 7px 0 0;
-  background: #2b2b2b;
-  color: var(--fg);
-  font: inherit;
-  font-size: 11px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  overflow: hidden;
-  pointer-events: auto;
-}
-.category-taskbar-tab-icon {
-  width: 14px;
-  height: 14px;
-  border: 1px solid color-mix(in srgb, var(--window-color, var(--accent)) 70%, var(--border));
-  border-radius: 3px;
-  object-fit: cover;
-  flex: 0 0 auto;
-}
-.category-taskbar-tab-label {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: left;
-}
-.category-taskbar-tab-close {
-  width: 17px;
-  height: 17px;
-  min-width: 17px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--fg);
-  display: grid;
-  place-items: center;
-  font-size: 14px;
-  line-height: 1;
-  flex: 0 0 auto;
-}
-.category-taskbar-tab-close:hover {
-  background: rgba(255,255,255,.12);
-}
-.category-taskbar-tab.active {
-  color: var(--fg);
-  border-color: color-mix(in srgb, var(--window-color, var(--accent)) 48%, #3a3a3a);
-  background: color-mix(in srgb, var(--window-color, var(--accent)) 14%, #303030);
-}
-.category-taskbar-tab.minimized {
-  background: #242424;
-  color: var(--muted);
-}
 
 body {
   padding-bottom: 32px;
-  min-height: 100vh;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-}
-
-.category-desktop {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  margin: 0;
-  border: 0;
-  background: color-mix(in srgb, var(--bg) 82%, var(--card));
-  overflow: hidden;
-}
-.desktop-icon-layer,
-.window-layer {
-  position: absolute;
-  inset: 0;
-}
-.desktop-icon-layer {
-  top: 12px;
-}
-.desktop-folder {
-  position: absolute;
-  width: 112px;
-  height: 120px;
-  display: grid;
-  justify-items: center;
-  align-content: start;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  outline: 0;
-  cursor: default;
-  user-select: none;
-  touch-action: none;
-  z-index: 3;
-}
-.desktop-folder.dragging {
-  opacity: .82;
-  z-index: 8;
-}
-.desktop-folder.active {
-  background: transparent;
-  border: 0;
-  outline: 0;
-}
-.desktop-folder-inner {
-  display: inline-grid;
-  justify-items: center;
-  align-content: start;
-  gap: 3px;
-  width: 104px;
-  height: 116px;
-  padding: 3px 4px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-sizing: border-box;
-}
-.desktop-folder.active .desktop-folder-inner,
-.desktop-folder.selected .desktop-folder-inner {
-  background: transparent;
-  border: 0;
-}
-.desktop-folder-icon {
-  width: 58px;
-  height: 58px;
-  border-radius: 8px;
-  border: 2px solid color-mix(in srgb, var(--folder-color) 78%, var(--border));
-  background: color-mix(in srgb, var(--folder-color) 24%, var(--card));
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-}
-.desktop-folder.active .desktop-folder-icon,
-.desktop-folder.selected .desktop-folder-icon {
-  border-color: color-mix(in srgb, var(--folder-color) 94%, white);
-  background: color-mix(in srgb, var(--folder-color) 34%, var(--card));
-  filter: brightness(1.18);
-}
-.desktop-folder-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  -webkit-user-drag: none;
-  user-select: none;
-}
-.desktop-folder-name,
-.desktop-folder-count {
-  width: 100%;
-  text-align: center;
-  line-height: 1.15;
-  text-shadow: 0 1px 2px rgba(0,0,0,.35);
-}
-.desktop-folder-name {
-  font-weight: 800;
-  font-size: 11px;
-  min-height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: visible;
-  white-space: normal;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-.desktop-folder-count {
-  color: var(--muted);
-  font-size: 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.desktop-selection-box {
-  position: absolute;
-  z-index: 6;
-  border: 1px solid color-mix(in srgb, var(--accent) 78%, white);
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  pointer-events: none;
-}
-.category-window {
-  position: absolute;
-  min-width: 420px;
-  min-height: 300px;
-  width: min(860px, calc(100% - 24px));
-  height: min(680px, calc(100% - 24px));
-  border: 1px solid var(--border);
-  background: #121212;
-  box-shadow: 0 24px 54px rgba(0,0,0,.35);
-  display: grid;
-  grid-template-rows: 38px 34px minmax(0, 1fr) 30px;
-  resize: both;
-  overflow: hidden;
-  z-index: 10;
-  filter: brightness(.42);
-}
-.category-window[hidden] {
-  display: none;
-}
-.category-window.maximized {
-  left: 10px !important;
-  top: 10px !important;
-  width: calc(100% - 20px) !important;
-  height: calc(100% - 20px) !important;
-}
-.category-window.active {
-  border-color: var(--border);
-  box-shadow: 0 24px 54px rgba(0,0,0,.35);
-  filter: brightness(1);
-}
-.category-window-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-  background: color-mix(in srgb, var(--card) 88%, var(--window-color, #64748b));
-  border-bottom: 1px solid var(--border);
-  cursor: move;
-}
-.category-window-title {
-  font-weight: 800;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.category-window-actions {
-  margin-left: auto;
-  display: inline-flex;
-  gap: 6px;
-}
-.category-window-actions button {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  padding: 0;
-  border-radius: 999px;
-}
-.category-window-tools {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  background: #171717;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-.category-window-tool-btn {
-  min-height: 23px;
-  padding: 3px 6px;
-  font-size: 11px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-.category-window-tool-btn img {
-  width: 13px !important;
-  height: 13px !important;
-  max-width: 13px !important;
-  max-height: 13px !important;
-  object-fit: contain;
-}
-.category-window-range {
-  min-height: 23px;
-  padding: 2px 5px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--bg) 70%, var(--card));
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  white-space: nowrap;
-}
-.category-window-range label {
-  font-size: 10px;
-  font-weight: 650;
-}
-.category-window-range input[type="range"] {
-  width: 70px;
-  min-width: 70px;
-}
-.category-window-range-value {
-  min-width: 24px;
-  text-align: right;
-  color: var(--muted);
-  font-size: 10px;
-}
-.category-window-body {
-  overflow: auto;
-  padding: 12px;
-  background: #121212;
-}
-.category-window-body .grid {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min-width, 460px)), 1fr));
-}
-.category-window-status {
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  font-size: 12px;
-  background: var(--card);
-}
-.pair-card.selected {
-  border-color: var(--ok);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 72%, transparent), var(--shadow);
-}
-.pair-card.cut-pending {
-  position: relative;
-}
-.pair-card.cut-pending::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,.48);
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 8;
-}
-.desktop-context-menu {
-  position: fixed;
-  z-index: 1700;
-  min-width: 160px;
-  background: var(--card);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 18px 34px rgba(0,0,0,.34);
-  padding: 5px;
-  display: none;
-}
-.desktop-context-menu.open {
-  display: grid;
-}
-.desktop-context-menu button {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 7px 9px;
-  text-align: left;
-  border-radius: 6px;
-  font: inherit;
-}
-.desktop-context-menu button:hover {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-}
-.desktop-context-menu button:disabled {
-  color: var(--muted);
-  opacity: .5;
-}
-.category-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1600;
-  background: rgba(0,0,0,.45);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-.category-dialog-backdrop.open {
-  display: flex;
-}
-.category-dialog {
-  width: min(340px, 100%);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 24px 44px rgba(0,0,0,.35);
-}
-.category-dialog h3 {
-  margin: 0 0 10px;
-  font-size: 16px;
-}
-.category-dialog label {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.category-dialog input,
-.category-dialog select {
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 7px;
-  box-sizing: border-box;
-}
-.category-dialog input[type="color"] {
-  width: 56px;
-  min-height: 28px;
-  padding: 2px;
-}
-#categoryIconInput {
-  max-width: 220px;
-}
-.category-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
 }
 
 @media (max-width: 720px) {
@@ -4088,15 +3525,6 @@ body {
     width: 100%;
     box-sizing: border-box;
   }
-  .category-desktop {
-    min-height: 0;
-    margin-inline: 0;
-  }
-  .category-window {
-    min-width: min(360px, calc(100% - 16px));
-    width: calc(100% - 16px);
-    left: 8px !important;
-  }
 }
 
 </style>
@@ -4105,15 +3533,15 @@ body {
 <div class="drop-paste-overlay" id="dropPasteOverlay">Drop images to add them</div>
 <div class="top">
   <div class="mode-stack">
-    <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_switch_image.png" alt=""><div class="mode-label">advanced image mode</div></div>
+    <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_switch_image.png" alt=""><div class="mode-label">simple image mode</div></div>
     <div class="mode-actions">
-      <form method="POST" action="/switch/simple"><button type="submit" title="Switch to Simple Image Prep"><span class="toolbar-btn-content">Simple</span></button></form>
+      <form method="POST" action="/switch/advanced"><button type="submit" title="Switch to Advanced Image Prep"><span class="toolbar-btn-content">Advanced</span></button></form>
       <form method="POST" action="/switch/video"><button type="submit" title="Switch to Video Prep"><span class="toolbar-btn-content">Video</span></button></form>
     </div>
   </div>
   <div class="row" style="margin-bottom:8px;">
     <form method="POST" action="/open_folder"><button type="submit" title="Open an image folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.png" alt="">Open</span></button></form>
-    <form method="POST" action="/add_files" id="addFilesForm"><input type="hidden" name="category" id="addFilesCategoryInput" value="Undefined"><button type="submit" title="Add image files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.png" alt="">Add</span></button></form>
+    <form method="POST" action="/add_files"><button type="submit" title="Add image files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.png" alt="">Add</span></button></form>
     <button type="button" id="openFileManagerBtn" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.png" alt="">Show</span></button>
     <form method="POST" action="/close_folder" id="closeFolderForm"><button type="submit" id="closeFolderBtn" title="Close Folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_close_folder.png" alt="">Close</span></button></form>
     <button type="button" id="convertBtn" title="Convert images to PNG"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_convert_png.png" alt="">PNG</span></button>
@@ -4121,6 +3549,8 @@ body {
     <a href="/backup"><button type="button" title="Back up image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.png" alt="">Backup</span></button></a>
     <button type="button" id="openJoyModalBtn" title="Generate captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_caption.png" alt="">Caption</span></button>
     <button type="button" id="openToolsModalBtnInline" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.png" alt="">Text</span></button>
+    <button type="button" id="autoCropAllBtn" title="Auto crop every image"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_auto_crop_all.png" alt="">Auto crop</span></button>
+    <button type="button" id="resetAllBtn" title="Reset unsaved captions, crops, and transforms"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_reset_all.png" alt="">Reset</span></button>
     <button type="button" id="saveAllBtn" title="Save every unsaved item"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.png" alt="">Save</span></button>
     <button type="button" id="renameAllBtn" title="Rename all image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.png" alt="">Rename</span></button>
   </div>
@@ -4144,6 +3574,16 @@ body {
       <label><input type="radio" name="crop_base" value="1536" {% if selected_crop_base == 1536 %}checked{% endif %}> 1536</label>
     </div>
   </div>
+  <div class="row" style="margin-top:8px;">
+    {% if folder_name %}
+      <span class="muted">Opened folder: {{ folder_name }}</span>
+    {% else %}
+      <span class="muted">No folder opened</span>
+    {% endif %}
+    {% if message %}
+      <span class="muted">{{ message|safe }}</span>
+    {% endif %}
+  </div>
 </div>
 
 {% if not folder_name %}
@@ -4156,29 +3596,6 @@ body {
 </div>
 {% endif %}
 
-{% if folder_name %}
-<div class="category-taskbar" id="statusbarTabs" aria-label="Open category folders"></div>
-<div class="category-desktop" id="categoryDesktop">
-  <div class="desktop-icon-layer" id="desktopIconLayer">
-    {% for category in category_folders %}
-      <div class="desktop-folder"
-           data-category="{{ category.name }}"
-           data-icon="{{ category.icon }}"
-           data-color="{{ category.color }}"
-           style="left:{{ category.x }}px; top:{{ category.y }}px; --folder-color: {{ category.color }};">
-        <div class="desktop-folder-inner">
-          <div class="desktop-folder-icon"><img src="/category_icon/{{ category.icon }}" alt="" draggable="false"></div>
-          <div class="desktop-folder-name">{{ category.name }}</div>
-          <div class="desktop-folder-count">{{ category.count }} images</div>
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-  <div class="window-layer" id="windowLayer"></div>
-</div>
-{% endif %}
-
-<div id="pairPool" hidden>
 <div class="grid">
 {% for pair in pairs %}
   <div class="pair-card" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" data-category="{{ pair.category }}">
@@ -4243,6 +3660,9 @@ body {
       <button type="button" class="icon-btn delete-btn" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" title="Delete" aria-label="Delete">
         <img src="/category_icon/btn_card_delete.png" alt="">
       </button>
+      <button type="button" class="icon-btn category-btn" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" data-category="{{ pair.category }}" title="{{ pair.category }}" aria-label="Category">
+        <img src="/category_icon/{{ pair.category_icon }}" alt="{{ pair.category }}">
+      </button>
     </div>
 
     <textarea class="caption-textarea" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" data-original={{ pair.text | tojson }} placeholder="Enter caption here...">{{- pair.text -}}</textarea>
@@ -4253,59 +3673,15 @@ body {
   </div>
 {% endfor %}
 </div>
-</div>
 
-<div class="statusbar">
-  <span class="statusbar-folder">
-    {% if folder_name %}
-      Opened folder: {{ folder_name }}
-    {% else %}
-      No folder opened
-    {% endif %}
-  </span>
-  <span class="statusbar-message" id="statusbarMessage">{% if message %}{{ message|safe }}{% endif %}</span>
-  <span class="statusbar-count">{{ pairs|length }} image{% if pairs|length != 1 %}s{% endif %}.</span>
-</div>
+<div class="statusbar">{{ pairs|length }} image{% if pairs|length != 1 %}s{% endif %}.</div>
 
-<div class="desktop-context-menu" id="desktopContextMenu" role="menu">
-  <button type="button" data-action="new-folder">New Folder</button>
-</div>
-<div class="desktop-context-menu" id="folderContextMenu" role="menu">
-  <button type="button" data-action="edit-folder">Edit Folder</button>
-  <button type="button" data-action="delete-folder">Delete Folder</button>
-</div>
-<div class="desktop-context-menu" id="cardContextMenu" role="menu">
-  <button type="button" data-action="copy-card">Copy</button>
-  <button type="button" data-action="cut-card">Cut</button>
-</div>
-
-<div class="category-dialog-backdrop" id="categoryDialogBackdrop">
-  <form class="category-dialog" id="categoryDialog">
-    <h3 id="categoryDialogTitle">Category folder</h3>
-    <input type="hidden" id="categoryOldName">
-    <label>
-      Name
-      <input type="text" id="categoryNameInput" required>
-    </label>
-    <label>
-      Color
-      <input type="color" id="categoryColorInput" value="#9ca3af">
-    </label>
-    <label>
-      Icon
-      <select id="categoryIconInput">
-        {% for category in icon_options %}
-          <option value="{{ category.icon }}">{{ category.name }}</option>
-        {% endfor %}
-        <option value="__upload_icon__">Add icon from disk...</option>
-      </select>
-      <input type="file" id="categoryIconFileInput" accept="image/*" hidden>
-    </label>
-    <div class="category-dialog-actions">
-      <button type="button" id="cancelCategoryDialogBtn">Cancel</button>
-      <button type="submit">Save</button>
-    </div>
-  </form>
+<div class="category-popover" id="categoryPopover" hidden>
+  <div class="category-popover-head">
+    <div class="category-popover-title">Select category</div>
+    <button type="button" class="category-popover-close" id="closeCategoryPopoverBtn">×</button>
+  </div>
+  <div class="category-option-grid" id="categoryOptionGrid"></div>
 </div>
 
 <div class="joy-modal-backdrop" id="joyModalBackdrop">
@@ -4523,6 +3899,7 @@ body {
       <button type="button" id="joyStartBtn">Start</button>
       <button type="button" id="joyInterruptBtn">Interrupt</button>
       <button type="button" id="joyResetSettingsBtn">Reset settings</button>
+      <span class="small" id="joyStatusText">Idle</span>
     </div>
 
     <div class="joy-progress" id="joyProgress">
@@ -4558,7 +3935,6 @@ body {
       <div class="tool-box" style="margin:0;">
         <h3>Replace in captions</h3>
         <form method="POST" action="/replace_all" id="replaceForm">
-          <input type="hidden" name="category" class="tools-category-input">
           <input type="text" name="match_string" placeholder="Search string or regex" required id="sr_match">
           <input type="text" name="replace_with" placeholder="Replace with" id="sr_replace">
           <label style="display:flex; align-items:center; gap:6px;" title="Examples of Regexes:
@@ -4576,7 +3952,6 @@ replace all: .*">
       <div class="tool-box" style="margin:0;">
         <h3>Count matches</h3>
         <form method="POST" action="/count_string" id="countForm">
-          <input type="hidden" name="category" class="tools-category-input">
           <input type="text" name="count_string" placeholder="Count regex" required id="count_regex">
           <button type="submit">Count</button>
         </form>
@@ -4585,7 +3960,6 @@ replace all: .*">
       <div class="tool-box" style="margin:0;">
         <h3>Add trigger word</h3>
         <form method="POST" action="/add_triggerword_all" id="triggerForm">
-          <input type="hidden" name="category" class="tools-category-input">
           <input type="text" name="trigger_word" placeholder="Trigger word" required id="trigger_word">
           <button type="submit">Add trigger word</button>
         </form>
@@ -4606,1169 +3980,11 @@ const CATEGORY_DEFS = JSON.parse(document.getElementById('category-defs-data').t
 const CATEGORY_ICON_BY_NAME = Object.fromEntries(CATEGORY_DEFS.map(item => [item.name, item.icon]));
 const CATEGORY_VISIBILITY_KEY = 'caption_app_categories_visible';
 const HAS_OPEN_FOLDER = {{ 'true' if folder_name else 'false' }};
-const FOLDER_KEY = {{ folder_name|tojson }};
 const IMAGE_FILE_PATTERN = /\.(png|jpe?g|gif|bmp|webp|avif)$/i;
-const DESKTOP_ICON_GRID_X = 112;
-const DESKTOP_ICON_GRID_Y = 120;
 const dropPasteOverlay = document.getElementById('dropPasteOverlay');
 let currentCropBase = {{ selected_crop_base|int }};
 const cropStates = new Map();
 let joySavedConfig = {};
-const categoryDesktop = document.getElementById('categoryDesktop');
-const desktopIconLayer = document.getElementById('desktopIconLayer');
-const windowLayer = document.getElementById('windowLayer');
-const pairPool = document.getElementById('pairPool');
-const addFilesForm = document.getElementById('addFilesForm');
-const addFilesCategoryInput = document.getElementById('addFilesCategoryInput');
-const categoryDialogBackdrop = document.getElementById('categoryDialogBackdrop');
-const categoryDialog = document.getElementById('categoryDialog');
-const categoryOldName = document.getElementById('categoryOldName');
-const categoryNameInput = document.getElementById('categoryNameInput');
-const categoryColorInput = document.getElementById('categoryColorInput');
-const categoryIconInput = document.getElementById('categoryIconInput');
-const categoryIconFileInput = document.getElementById('categoryIconFileInput');
-const desktopContextMenu = document.getElementById('desktopContextMenu');
-const folderContextMenu = document.getElementById('folderContextMenu');
-const cardContextMenu = document.getElementById('cardContextMenu');
-const statusbarMessage = document.getElementById('statusbarMessage');
-const statusbarTabs = document.getElementById('statusbarTabs');
-const selectedImgNames = new Set();
-let pairClipboard = null;
-let activeCategory = localStorage.getItem(`caption_app_active_category_${FOLDER_KEY}`) || 'Undefined';
-let categoryWindowZ = 20;
-let categoryTabOrderCounter = 0;
-let pendingNewFolderPosition = null;
-let contextFolderName = '';
-let contextCard = null;
-let lastDesktopFolderClick = { name: '', time: 0 };
-let previousCategoryIconValue = 'undefined.png';
-const selectedDesktopFolders = new Set();
-let textHeight = parseInt(localStorage.getItem('caption_app_text_height') || '110', 10);
-let imageHeight = parseInt(localStorage.getItem('caption_app_image_height') || '420', 10);
-const categoryTextHeights = new Map();
-const categoryImageHeights = new Map();
-
-function categoryExists(name) {
-  return CATEGORY_DEFS.some(item => item.name === name);
-}
-
-function categoryData(name) {
-  return CATEGORY_DEFS.find(item => item.name === name) || CATEGORY_DEFS.find(item => item.name === 'Undefined') || CATEGORY_DEFS[0];
-}
-
-function setActiveCategory(name) {
-  activeCategory = categoryExists(name) ? name : 'Undefined';
-  localStorage.setItem(`caption_app_active_category_${FOLDER_KEY}`, activeCategory);
-  if (addFilesCategoryInput) addFilesCategoryInput.value = activeCategory;
-  document.querySelectorAll('.desktop-folder').forEach(icon => {
-    icon.classList.toggle('active', icon.dataset.category === activeCategory);
-  });
-  document.querySelectorAll('.category-window').forEach(win => {
-    win.classList.toggle('active', win.dataset.category === activeCategory);
-  });
-  renderStatusbarTabs();
-}
-
-function setDesktopFolderSelected(icon, selected) {
-  if (!icon?.dataset?.category) return;
-  icon.classList.toggle('selected', selected);
-  if (selected) {
-    selectedDesktopFolders.add(icon.dataset.category);
-  } else {
-    selectedDesktopFolders.delete(icon.dataset.category);
-  }
-}
-
-function clearDesktopFolderSelection() {
-  selectedDesktopFolders.clear();
-  document.querySelectorAll('.desktop-folder.selected').forEach(icon => icon.classList.remove('selected'));
-}
-
-function selectOnlyDesktopFolder(icon) {
-  clearDesktopFolderSelection();
-  setDesktopFolderSelected(icon, true);
-}
-
-function selectedDesktopFolderIcons() {
-  return Array.from(document.querySelectorAll('.desktop-folder'))
-    .filter(icon => selectedDesktopFolders.has(icon.dataset.category));
-}
-
-function categoryWindowStorageKey(name) {
-  return `caption_app_category_window_${FOLDER_KEY}_${name}`;
-}
-
-function openCategoryWindowsStorageKey() {
-  return `caption_app_open_category_windows_${FOLDER_KEY}`;
-}
-
-function activeCategoryWindowStorageKey() {
-  return `caption_app_front_category_window_${FOLDER_KEY}`;
-}
-
-function saveOpenCategoryWindows() {
-  const items = Array.from(document.querySelectorAll('.category-window'))
-    .filter(win => win.dataset.open === '1')
-    .sort((a, b) => (parseInt(a.dataset.tabOrder || '0', 10) || 0) - (parseInt(b.dataset.tabOrder || '0', 10) || 0))
-    .map(win => ({
-      name: win.dataset.category,
-      minimized: win.dataset.minimized === '1',
-      order: parseInt(win.dataset.tabOrder || '0', 10) || 0,
-    }))
-    .filter(item => item.name);
-  localStorage.setItem(openCategoryWindowsStorageKey(), JSON.stringify(items));
-  localStorage.setItem(activeCategoryWindowStorageKey(), activeCategory);
-  renderStatusbarTabs();
-}
-
-function loadOpenCategoryWindows() {
-  try {
-    const items = JSON.parse(localStorage.getItem(openCategoryWindowsStorageKey()) || '[]');
-    if (!Array.isArray(items)) return [];
-    return items
-      .map((item, index) => typeof item === 'string'
-        ? { name: item, minimized: false, order: index + 1 }
-        : { name: item.name, minimized: !!item.minimized, order: parseInt(item.order || index + 1, 10) || index + 1 })
-      .filter(item => item && categoryExists(item.name));
-  } catch (e) {
-    return [];
-  }
-}
-
-function loadCategoryWindowRect(name, index) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(categoryWindowStorageKey(name)) || '{}');
-    if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) return saved;
-  } catch (e) {}
-  return {
-    left: 170 + (index % 5) * 24,
-    top: 70 + (index % 5) * 22,
-    width: Math.min(860, Math.max(420, (categoryDesktop?.clientWidth || 900) - 220)),
-    height: Math.min(680, Math.max(320, (categoryDesktop?.clientHeight || 700) - 120)),
-  };
-}
-
-function saveCategoryWindowRect(win) {
-  if (!win || win.hidden || win.classList.contains('maximized')) return;
-  localStorage.setItem(categoryWindowStorageKey(win.dataset.category), JSON.stringify({
-    left: Math.max(0, Math.round(parseFloat(win.style.left) || win.offsetLeft || 0)),
-    top: Math.max(0, Math.round(parseFloat(win.style.top) || win.offsetTop || 0)),
-    width: Math.round(win.offsetWidth),
-    height: Math.round(win.offsetHeight),
-  }));
-}
-
-function cardMinWidthForImageHeight(value) {
-  return Math.max(220, value + 24);
-}
-
-function getCategoryTextHeight(category) {
-  return categoryTextHeights.get(category) || textHeight;
-}
-
-function getCategoryImageHeight(category) {
-  return categoryImageHeights.get(category) || imageHeight;
-}
-
-function updateCategorySizingControls(category) {
-  const win = document.querySelector(`.category-window[data-category="${CSS.escape(category)}"]`);
-  if (!win) return;
-  const textValue = getCategoryTextHeight(category);
-  const imageValue = getCategoryImageHeight(category);
-  const textSlider = win.querySelector('.category-text-height-slider');
-  const textLabel = win.querySelector('.category-text-height-value');
-  const imageSlider = win.querySelector('.category-image-height-slider');
-  const imageLabel = win.querySelector('.category-image-height-value');
-  if (textSlider) textSlider.value = String(textValue);
-  if (textLabel) textLabel.textContent = String(textValue);
-  if (imageSlider) imageSlider.value = String(imageValue);
-  if (imageLabel) imageLabel.textContent = String(imageValue);
-}
-
-function applyTextHeightToCards(cards, value) {
-  (cards || []).forEach(card => {
-    const ta = card.querySelector('.caption-textarea');
-    if (ta) ta.style.height = `${value}px`;
-  });
-}
-
-function applyImageHeightToCards(cards, value) {
-  (cards || []).forEach(card => {
-    const stage = card.querySelector('.crop-stage');
-    if (stage) {
-      stage.style.width = `${value}px`;
-      stage.style.maxWidth = '100%';
-    }
-    const index = parseInt(card.dataset.index, 10);
-    if (Number.isFinite(index)) {
-      renderImageTransform(index);
-      renderCrop(index);
-    }
-  });
-}
-
-function applyCategorySizing(category) {
-  const cards = getCardsInCategory(category);
-  const imageValue = getCategoryImageHeight(category);
-  const win = document.querySelector(`.category-window[data-category="${CSS.escape(category)}"]`);
-  const grid = win?.querySelector('.grid');
-  applyTextHeightToCards(cards, getCategoryTextHeight(category));
-  applyImageHeightToCards(cards, imageValue);
-  if (grid) grid.style.setProperty('--card-min-width', `${cardMinWidthForImageHeight(imageValue)}px`);
-  updateCategorySizingControls(category);
-}
-
-function applyCategorySizingToCard(card) {
-  if (!card) return;
-  const category = categoryExists(card.dataset.category) ? card.dataset.category : 'Undefined';
-  applyTextHeightToCards([card], getCategoryTextHeight(category));
-  applyImageHeightToCards([card], getCategoryImageHeight(category));
-}
-
-function setCategoryTextHeight(category, value) {
-  if (!categoryExists(category)) return;
-  categoryTextHeights.set(category, value);
-  applyTextHeightToCards(getCardsInCategory(category), value);
-  updateCategorySizingControls(category);
-}
-
-function setCategoryImageHeight(category, value) {
-  if (!categoryExists(category)) return;
-  categoryImageHeights.set(category, value);
-  const win = document.querySelector(`.category-window[data-category="${CSS.escape(category)}"]`);
-  const grid = win?.querySelector('.grid');
-  if (grid) grid.style.setProperty('--card-min-width', `${cardMinWidthForImageHeight(value)}px`);
-  applyImageHeightToCards(getCardsInCategory(category), value);
-  updateCategorySizingControls(category);
-}
-
-function createCategoryRangeControl(id, kind, label, min, max, step, value, onInput) {
-  const wrap = document.createElement('div');
-  wrap.className = 'category-window-range';
-  const labelEl = document.createElement('label');
-  labelEl.htmlFor = id;
-  labelEl.textContent = label;
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.id = id;
-  input.min = String(min);
-  input.max = String(max);
-  input.step = String(step);
-  input.value = String(value);
-  input.className = kind === 'text' ? 'category-text-height-slider' : 'category-image-height-slider';
-  const valueEl = document.createElement('span');
-  valueEl.className = `category-window-range-value ${kind === 'text' ? 'category-text-height-value' : 'category-image-height-value'}`;
-  valueEl.textContent = String(value);
-  input.addEventListener('input', (event) => {
-    const nextValue = parseInt(event.target.value, 10);
-    valueEl.textContent = String(nextValue);
-    onInput(nextValue);
-  });
-  wrap.append(labelEl, input, valueEl);
-  return wrap;
-}
-
-function renderStatusbarTabs() {
-  if (!statusbarTabs) return;
-  statusbarTabs.innerHTML = '';
-  const wins = Array.from(document.querySelectorAll('.category-window'))
-    .filter(win => win.dataset.open === '1')
-    .sort((a, b) => (parseInt(a.dataset.tabOrder || '0', 10) || 0) - (parseInt(b.dataset.tabOrder || '0', 10) || 0));
-  wins.forEach(win => {
-    const category = categoryData(win.dataset.category);
-    const tab = document.createElement('div');
-    tab.role = 'button';
-    tab.tabIndex = 0;
-    tab.className = 'category-taskbar-tab';
-    tab.title = win.dataset.category;
-    tab.style.setProperty('--window-color', category?.color || '#64748b');
-    tab.classList.toggle('active', win.dataset.category === activeCategory);
-    tab.classList.toggle('minimized', win.dataset.minimized === '1');
-    tab.addEventListener('click', () => openCategoryWindow(win.dataset.category));
-    tab.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        openCategoryWindow(win.dataset.category);
-      }
-    });
-    const icon = document.createElement('img');
-    icon.className = 'category-taskbar-tab-icon';
-    icon.src = `/category_icon/${category?.icon || 'undefined.png'}`;
-    icon.alt = '';
-    const label = document.createElement('span');
-    label.className = 'category-taskbar-tab-label';
-    label.textContent = win.dataset.category;
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'category-taskbar-tab-close';
-    close.title = 'Close';
-    close.textContent = '×';
-    close.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      closeCategoryWindow(win);
-    });
-    tab.append(icon, label, close);
-    statusbarTabs.append(tab);
-  });
-}
-
-function closeCategoryWindow(win) {
-  if (!win) return;
-  saveCategoryWindowRect(win);
-  win.dataset.open = '0';
-  win.dataset.minimized = '0';
-  win.hidden = true;
-  saveOpenCategoryWindows();
-}
-
-function minimizeCategoryWindow(win) {
-  if (!win) return;
-  saveCategoryWindowRect(win);
-  win.dataset.open = '1';
-  win.dataset.minimized = '1';
-  win.hidden = true;
-  saveOpenCategoryWindows();
-}
-
-function bringCategoryWindowToFront(win) {
-  if (!win) return;
-  win.style.zIndex = String(++categoryWindowZ);
-  setActiveCategory(win.dataset.category);
-  localStorage.setItem(activeCategoryWindowStorageKey(), win.dataset.category);
-  renderStatusbarTabs();
-}
-
-function updateWindowStatus(win) {
-  const count = win?.querySelectorAll('.pair-card').length || 0;
-  const selectedCount = win?.querySelectorAll('.pair-card.selected').length || 0;
-  const status = win?.querySelector('.category-window-status');
-  if (status) {
-    const totalText = `${count} image${count === 1 ? '' : 's'}`;
-    const selectedText = selectedCount ? ` | selected: ${selectedCount}` : '';
-    status.textContent = `${totalText}${selectedText}`;
-  }
-}
-
-function updateAllWindowStatuses() {
-  document.querySelectorAll('.category-window').forEach(updateWindowStatus);
-}
-
-function desktopIconLayerRect() {
-  return desktopIconLayer?.getBoundingClientRect() || categoryDesktop?.getBoundingClientRect();
-}
-
-function snapDesktopCoord(value, step) {
-  return Math.round(value / step) * step;
-}
-
-function clampDesktopIconPosition(x, y, icon = null) {
-  const layerRect = desktopIconLayerRect();
-  const maxX = Math.max(0, (layerRect?.width || 0) - (icon?.offsetWidth || 112));
-  const maxY = Math.max(0, (layerRect?.height || 0) - (icon?.offsetHeight || DESKTOP_ICON_GRID_Y));
-  return {
-    x: Math.max(0, Math.min(maxX, x)),
-    y: Math.max(0, Math.min(maxY, y)),
-  };
-}
-
-function snapDesktopIconPosition(x, y, icon = null) {
-  const clamped = clampDesktopIconPosition(x, y, icon);
-  return clampDesktopIconPosition(
-    snapDesktopCoord(clamped.x, DESKTOP_ICON_GRID_X),
-    snapDesktopCoord(clamped.y, DESKTOP_ICON_GRID_Y),
-    icon,
-  );
-}
-
-function desktopGridKey(pos) {
-  return `${Math.round(pos.x / DESKTOP_ICON_GRID_X)},${Math.round(pos.y / DESKTOP_ICON_GRID_Y)}`;
-}
-
-function occupiedDesktopGridKeys(excludeIcon = null) {
-  const keys = new Set();
-  document.querySelectorAll('.desktop-folder').forEach(icon => {
-    if (icon === excludeIcon) return;
-    const pos = snapDesktopIconPosition(parseFloat(icon.style.left) || 0, parseFloat(icon.style.top) || 0, icon);
-    keys.add(desktopGridKey(pos));
-  });
-  return keys;
-}
-
-function nearestFreeDesktopIconPosition(x, y, icon = null) {
-  const snapped = snapDesktopIconPosition(x, y, icon);
-  const occupied = occupiedDesktopGridKeys(icon);
-  if (!occupied.has(desktopGridKey(snapped))) return snapped;
-
-  const layerRect = desktopIconLayerRect();
-  const maxCol = Math.max(0, Math.floor(Math.max(0, (layerRect?.width || 0) - (icon?.offsetWidth || 112)) / DESKTOP_ICON_GRID_X));
-  const maxRow = Math.max(0, Math.floor(Math.max(0, (layerRect?.height || 0) - (icon?.offsetHeight || DESKTOP_ICON_GRID_Y)) / DESKTOP_ICON_GRID_Y));
-  const startCol = Math.round(snapped.x / DESKTOP_ICON_GRID_X);
-  const startRow = Math.round(snapped.y / DESKTOP_ICON_GRID_Y);
-
-  let best = null;
-  let bestScore = Infinity;
-  const maxRadius = Math.max(maxCol, maxRow) + 1;
-  for (let radius = 1; radius <= maxRadius; radius += 1) {
-    for (let row = Math.max(0, startRow - radius); row <= Math.min(maxRow, startRow + radius); row += 1) {
-      for (let col = Math.max(0, startCol - radius); col <= Math.min(maxCol, startCol + radius); col += 1) {
-        if (Math.max(Math.abs(col - startCol), Math.abs(row - startRow)) !== radius) continue;
-        const pos = { x: col * DESKTOP_ICON_GRID_X, y: row * DESKTOP_ICON_GRID_Y };
-        if (occupied.has(desktopGridKey(pos))) continue;
-        const score = ((pos.x - snapped.x) ** 2) + ((pos.y - snapped.y) ** 2);
-        if (score < bestScore) {
-          best = pos;
-          bestScore = score;
-        }
-      }
-    }
-    if (best) return best;
-  }
-  return snapped;
-}
-
-function occupiedDesktopGridKeysForGroup(groupIcons) {
-  const group = new Set(groupIcons || []);
-  const keys = new Set();
-  document.querySelectorAll('.desktop-folder').forEach(icon => {
-    if (group.has(icon)) return;
-    const pos = snapDesktopIconPosition(parseFloat(icon.style.left) || 0, parseFloat(icon.style.top) || 0, icon);
-    keys.add(desktopGridKey(pos));
-  });
-  return keys;
-}
-
-function clampDesktopGroupDelta(entries, dx, dy) {
-  const layerRect = desktopIconLayerRect();
-  const width = layerRect?.width || 0;
-  const height = layerRect?.height || 0;
-  let minDx = -Infinity;
-  let maxDx = Infinity;
-  let minDy = -Infinity;
-  let maxDy = Infinity;
-  entries.forEach(entry => {
-    const iconWidth = entry.icon.offsetWidth || DESKTOP_ICON_GRID_X;
-    const iconHeight = entry.icon.offsetHeight || DESKTOP_ICON_GRID_Y;
-    minDx = Math.max(minDx, -entry.left);
-    maxDx = Math.min(maxDx, Math.max(0, width - iconWidth) - entry.left);
-    minDy = Math.max(minDy, -entry.top);
-    maxDy = Math.min(maxDy, Math.max(0, height - iconHeight) - entry.top);
-  });
-  return {
-    dx: Math.max(minDx, Math.min(maxDx, dx)),
-    dy: Math.max(minDy, Math.min(maxDy, dy)),
-  };
-}
-
-function findFreeDesktopGroupPositions(entries, anchorIcon) {
-  const anchorEntry = entries.find(entry => entry.icon === anchorIcon) || entries[0];
-  const anchorX = parseFloat(anchorIcon.style.left) || anchorEntry.left;
-  const anchorY = parseFloat(anchorIcon.style.top) || anchorEntry.top;
-  const snapped = snapDesktopIconPosition(anchorX, anchorY, anchorIcon);
-  const occupied = occupiedDesktopGridKeysForGroup(entries.map(entry => entry.icon));
-  const layerRect = desktopIconLayerRect();
-  const maxCol = Math.max(0, Math.floor(Math.max(0, (layerRect?.width || 0) - (anchorIcon?.offsetWidth || DESKTOP_ICON_GRID_X)) / DESKTOP_ICON_GRID_X));
-  const maxRow = Math.max(0, Math.floor(Math.max(0, (layerRect?.height || 0) - (anchorIcon?.offsetHeight || DESKTOP_ICON_GRID_Y)) / DESKTOP_ICON_GRID_Y));
-  const startCol = Math.round(snapped.x / DESKTOP_ICON_GRID_X);
-  const startRow = Math.round(snapped.y / DESKTOP_ICON_GRID_Y);
-  const offsets = entries.map(entry => ({
-    entry,
-    dx: Math.round((entry.left - anchorEntry.left) / DESKTOP_ICON_GRID_X) * DESKTOP_ICON_GRID_X,
-    dy: Math.round((entry.top - anchorEntry.top) / DESKTOP_ICON_GRID_Y) * DESKTOP_ICON_GRID_Y,
-  }));
-
-  function positionsFor(anchorPos) {
-    const keys = new Set();
-    const out = [];
-    for (const item of offsets) {
-      const raw = { x: anchorPos.x + item.dx, y: anchorPos.y + item.dy };
-      const pos = snapDesktopIconPosition(raw.x, raw.y, item.entry.icon);
-      if (Math.abs(pos.x - raw.x) > 1 || Math.abs(pos.y - raw.y) > 1) return null;
-      const key = desktopGridKey(pos);
-      if (keys.has(key) || occupied.has(key)) return null;
-      keys.add(key);
-      out.push({ icon: item.entry.icon, pos });
-    }
-    return out;
-  }
-
-  const direct = positionsFor(snapped);
-  if (direct) return direct;
-
-  let best = null;
-  let bestScore = Infinity;
-  const maxRadius = Math.max(maxCol, maxRow) + 1;
-  for (let radius = 1; radius <= maxRadius; radius += 1) {
-    for (let row = Math.max(0, startRow - radius); row <= Math.min(maxRow, startRow + radius); row += 1) {
-      for (let col = Math.max(0, startCol - radius); col <= Math.min(maxCol, startCol + radius); col += 1) {
-        if (Math.max(Math.abs(col - startCol), Math.abs(row - startRow)) !== radius) continue;
-        const anchorPos = { x: col * DESKTOP_ICON_GRID_X, y: row * DESKTOP_ICON_GRID_Y };
-        const positions = positionsFor(anchorPos);
-        if (!positions) continue;
-        const score = ((anchorPos.x - snapped.x) ** 2) + ((anchorPos.y - snapped.y) ** 2);
-        if (score < bestScore) {
-          best = positions;
-          bestScore = score;
-        }
-      }
-    }
-    if (best) return best;
-  }
-  return entries.map(entry => ({
-    icon: entry.icon,
-    pos: nearestFreeDesktopIconPosition(parseFloat(entry.icon.style.left) || entry.left, parseFloat(entry.icon.style.top) || entry.top, entry.icon),
-  }));
-}
-
-function nearestFreeDesktopIconPositionFromOccupied(x, y, icon, occupied) {
-  const snapped = snapDesktopIconPosition(x, y, icon);
-  if (!occupied.has(desktopGridKey(snapped))) return snapped;
-  const layerRect = desktopIconLayerRect();
-  const maxCol = Math.max(0, Math.floor(Math.max(0, (layerRect?.width || 0) - (icon?.offsetWidth || DESKTOP_ICON_GRID_X)) / DESKTOP_ICON_GRID_X));
-  const maxRow = Math.max(0, Math.floor(Math.max(0, (layerRect?.height || 0) - (icon?.offsetHeight || DESKTOP_ICON_GRID_Y)) / DESKTOP_ICON_GRID_Y));
-  const startCol = Math.round(snapped.x / DESKTOP_ICON_GRID_X);
-  const startRow = Math.round(snapped.y / DESKTOP_ICON_GRID_Y);
-  let best = null;
-  let bestScore = Infinity;
-  const maxRadius = Math.max(maxCol, maxRow) + 1;
-  for (let radius = 1; radius <= maxRadius; radius += 1) {
-    for (let row = Math.max(0, startRow - radius); row <= Math.min(maxRow, startRow + radius); row += 1) {
-      for (let col = Math.max(0, startCol - radius); col <= Math.min(maxCol, startCol + radius); col += 1) {
-        if (Math.max(Math.abs(col - startCol), Math.abs(row - startRow)) !== radius) continue;
-        const pos = { x: col * DESKTOP_ICON_GRID_X, y: row * DESKTOP_ICON_GRID_Y };
-        if (occupied.has(desktopGridKey(pos))) continue;
-        const score = ((pos.x - snapped.x) ** 2) + ((pos.y - snapped.y) ** 2);
-        if (score < bestScore) {
-          best = pos;
-          bestScore = score;
-        }
-      }
-    }
-    if (best) return best;
-  }
-  return snapped;
-}
-
-function normalizeDesktopFolderGridPositions() {
-  const occupied = new Set();
-  document.querySelectorAll('.desktop-folder').forEach(icon => {
-    const oldX = parseFloat(icon.style.left) || 0;
-    const oldY = parseFloat(icon.style.top) || 0;
-    const pos = nearestFreeDesktopIconPositionFromOccupied(oldX, oldY, icon, occupied);
-    occupied.add(desktopGridKey(pos));
-    if (Math.abs(pos.x - oldX) > 1 || Math.abs(pos.y - oldY) > 1) {
-      icon.style.left = `${pos.x}px`;
-      icon.style.top = `${pos.y}px`;
-      saveDesktopFolderPosition(icon);
-    }
-  });
-}
-
-function hideDesktopMenus() {
-  desktopContextMenu?.classList.remove('open');
-  folderContextMenu?.classList.remove('open');
-  cardContextMenu?.classList.remove('open');
-  contextCard = null;
-}
-
-function placeContextMenu(menu, clientX, clientY) {
-  if (!menu) return;
-  menu.style.left = `${clientX}px`;
-  menu.style.top = `${clientY}px`;
-  menu.classList.add('open');
-  const rect = menu.getBoundingClientRect();
-  const left = Math.max(4, Math.min(clientX, window.innerWidth - rect.width - 4));
-  const top = Math.max(4, Math.min(clientY, window.innerHeight - rect.height - 4));
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-}
-
-function openDesktopContextMenu(event) {
-  if (!categoryDesktop || event.target.closest('.desktop-folder') || event.target.closest('.category-window')) return;
-  event.preventDefault();
-  hideDesktopMenus();
-  const layerRect = desktopIconLayerRect();
-  pendingNewFolderPosition = nearestFreeDesktopIconPosition(
-    event.clientX - layerRect.left,
-    event.clientY - layerRect.top,
-  );
-  placeContextMenu(desktopContextMenu, event.clientX, event.clientY);
-}
-
-function openFolderContextMenu(event, name) {
-  event.preventDefault();
-  event.stopPropagation();
-  hideDesktopMenus();
-  contextFolderName = name;
-  const deleteBtn = folderContextMenu?.querySelector('[data-action="delete-folder"]');
-  if (deleteBtn) deleteBtn.disabled = name === 'Undefined';
-  placeContextMenu(folderContextMenu, event.clientX, event.clientY);
-}
-
-function setStatusbarMessage(text) {
-  if (statusbarMessage) statusbarMessage.textContent = text || '';
-}
-
-function selectedCardCount() {
-  return selectedImgNames.size;
-}
-
-function setPairClipboardFromSelection(mode) {
-  if (!selectedImgNames.size) return false;
-  pairClipboard = {
-    mode,
-    img_names: Array.from(selectedImgNames),
-  };
-  if (mode === 'move') {
-    markCutPendingCards(pairClipboard.img_names);
-    setStatusbarMessage(`Cut ${selectedCardCount()} card${selectedCardCount() === 1 ? '' : 's'} to clipboard.`);
-  } else {
-    clearCutPendingCards();
-    setStatusbarMessage(`Copied ${selectedCardCount()} card${selectedCardCount() === 1 ? '' : 's'} to clipboard.`);
-  }
-  return true;
-}
-
-function openCardContextMenu(event, card) {
-  if (!card || isTypingElement(event.target) || event.target.closest('button, input, textarea, select')) return;
-  event.preventDefault();
-  event.stopPropagation();
-  hideDesktopMenus();
-  contextCard = card;
-  const win = card.closest('.category-window');
-  if (win) bringCategoryWindowToFront(win);
-  if (!card.classList.contains('selected')) selectOnlyPair(card);
-  placeContextMenu(cardContextMenu, event.clientX, event.clientY);
-}
-
-async function deleteCategoryByName(name) {
-  if (name === 'Undefined') {
-    alert('Undefined cannot be deleted.');
-    return;
-  }
-  if (!window.confirm(`Delete category "${name}"? Its images move to Undefined.`)) return;
-  const res = await fetch('/delete_category', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.ok) {
-    alert(data.error || 'Delete failed.');
-    return;
-  }
-  suppressBeforeUnload = true;
-  window.location.reload();
-}
-
-function buildCategoryWindow(category, index) {
-  if (!windowLayer) return null;
-  const win = document.createElement('section');
-  win.className = 'category-window';
-  win.dataset.category = category.name;
-  win.dataset.open = '0';
-  win.dataset.minimized = '0';
-  win.hidden = true;
-  win.style.setProperty('--window-color', category.color || '#64748b');
-  const rect = loadCategoryWindowRect(category.name, index);
-  win.style.left = `${rect.left}px`;
-  win.style.top = `${rect.top}px`;
-  if (rect.width) win.style.width = `${rect.width}px`;
-  if (rect.height) win.style.height = `${rect.height}px`;
-
-  const head = document.createElement('div');
-  head.className = 'category-window-head';
-  const title = document.createElement('div');
-  title.className = 'category-window-title';
-  title.textContent = category.name;
-  const actions = document.createElement('div');
-  actions.className = 'category-window-actions';
-  const minimizeBtn = document.createElement('button');
-  minimizeBtn.type = 'button';
-  minimizeBtn.title = 'Minimize';
-  minimizeBtn.textContent = '_';
-  const maxBtn = document.createElement('button');
-  maxBtn.type = 'button';
-  maxBtn.title = 'Maximize';
-  maxBtn.textContent = '□';
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.title = 'Close';
-  closeBtn.textContent = 'x';
-  actions.append(minimizeBtn, maxBtn, closeBtn);
-  head.append(title, actions);
-
-  const tools = document.createElement('div');
-  tools.className = 'category-window-tools';
-  const toolButtons = [
-    ['text', 'Text', 'btn_text_tools.png', () => openToolsModal(category.name)],
-    ['auto-crop', 'Auto crop', 'btn_auto_crop_all.png', () => autoCropCategory(category.name)],
-    ['reset', 'Reset', 'btn_reset_all.png', () => resetCategoryUnsavedChanges(category.name)],
-    ['save', 'Save', 'btn_save_all.png', () => saveCategoryCards(category.name)],
-    ['rename', 'Rename', 'btn_rename_all.png', () => renameCategoryPairs(category.name)],
-  ];
-  toolButtons.forEach(([key, label, icon, handler]) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'category-window-tool-btn';
-    btn.dataset.tool = key;
-    btn.title = label;
-    btn.innerHTML = `<img src="/category_icon/${icon}" alt="">${label}`;
-    btn.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      bringCategoryWindowToFront(win);
-      handler();
-    });
-    tools.append(btn);
-  });
-  tools.append(
-    createCategoryRangeControl(
-      `category-text-height-${index}`,
-      'text',
-      'Text height',
-      60,
-      360,
-      10,
-      getCategoryTextHeight(category.name),
-      value => setCategoryTextHeight(category.name, value),
-    ),
-    createCategoryRangeControl(
-      `category-image-height-${index}`,
-      'image',
-      'Image size',
-      180,
-      720,
-      20,
-      getCategoryImageHeight(category.name),
-      value => setCategoryImageHeight(category.name, value),
-    ),
-  );
-
-  const body = document.createElement('div');
-  body.className = 'category-window-body';
-  const grid = document.createElement('div');
-  grid.className = 'grid';
-  body.append(grid);
-  const status = document.createElement('div');
-  status.className = 'category-window-status';
-  status.textContent = '0 images';
-  win.append(head, tools, body, status);
-  windowLayer.append(win);
-
-  win.addEventListener('pointerdown', () => bringCategoryWindowToFront(win));
-  closeBtn.addEventListener('click', () => {
-    closeCategoryWindow(win);
-  });
-  minimizeBtn.addEventListener('click', () => {
-    minimizeCategoryWindow(win);
-  });
-  maxBtn.addEventListener('click', () => {
-    win.classList.toggle('maximized');
-    bringCategoryWindowToFront(win);
-    setTimeout(() => document.querySelectorAll('.crop-stage img').forEach(img => img.dispatchEvent(new Event('load'))), 60);
-  });
-  head.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('button')) return;
-    bringCategoryWindowToFront(win);
-    win.classList.remove('maximized');
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const startLeft = parseFloat(win.style.left) || win.offsetLeft || 0;
-    const startTop = parseFloat(win.style.top) || win.offsetTop || 0;
-    head.setPointerCapture(event.pointerId);
-    const move = (moveEvent) => {
-      const desktopRect = categoryDesktop.getBoundingClientRect();
-      const nextLeft = Math.max(0, Math.min(desktopRect.width - 80, startLeft + moveEvent.clientX - startX));
-      const nextTop = Math.max(0, Math.min(desktopRect.height - 60, startTop + moveEvent.clientY - startY));
-      win.style.left = `${nextLeft}px`;
-      win.style.top = `${nextTop}px`;
-    };
-    const up = () => {
-      head.removeEventListener('pointermove', move);
-      head.removeEventListener('pointerup', up);
-      saveCategoryWindowRect(win);
-    };
-    head.addEventListener('pointermove', move);
-    head.addEventListener('pointerup', up, { once: true });
-  });
-
-  for (const dropTarget of [win, body]) {
-    dropTarget.addEventListener('dragover', (event) => {
-      if (!hasImageDrag(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-    });
-    dropTarget.addEventListener('drop', async (event) => {
-      if (!hasImageDrag(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      imageDragDepth = 0;
-      dropPasteOverlay?.classList.remove('show');
-      bringCategoryWindowToFront(win);
-      await uploadImageFiles(event.dataTransfer?.files || [], 'dropped', win.dataset.category);
-    });
-  }
-
-  return win;
-}
-
-function openCategoryWindow(name) {
-  const win = document.querySelector(`.category-window[data-category="${CSS.escape(name)}"]`);
-  if (!win) return;
-  if (win.dataset.open !== '1' && !win.dataset.tabOrder) {
-    categoryTabOrderCounter += 1;
-    win.dataset.tabOrder = String(categoryTabOrderCounter);
-  }
-  win.dataset.open = '1';
-  win.dataset.minimized = '0';
-  win.hidden = false;
-  bringCategoryWindowToFront(win);
-  updateWindowStatus(win);
-  saveOpenCategoryWindows();
-  setTimeout(() => document.querySelectorAll('.crop-stage img').forEach(img => img.dispatchEvent(new Event('load'))), 60);
-}
-
-function restoreOpenCategoryWindows() {
-  loadOpenCategoryWindows().forEach(item => {
-    categoryTabOrderCounter = Math.max(categoryTabOrderCounter, parseInt(item.order || '0', 10) || 0);
-    const win = document.querySelector(`.category-window[data-category="${CSS.escape(item.name)}"]`);
-    if (win) win.dataset.tabOrder = String(item.order || categoryTabOrderCounter);
-    openCategoryWindow(item.name);
-    if (item.minimized) {
-      minimizeCategoryWindow(win);
-    }
-  });
-}
-
-function restoreFrontCategoryWindow(fallbackName = activeCategory) {
-  const name = localStorage.getItem(activeCategoryWindowStorageKey()) || fallbackName;
-  const win = document.querySelector(`.category-window[data-category="${CSS.escape(name)}"]`);
-  if (win && !win.hidden) {
-    bringCategoryWindowToFront(win);
-  } else {
-    setActiveCategory(fallbackName);
-  }
-}
-
-function distributePairCardsToWindows() {
-  if (!windowLayer || !pairPool) return;
-  CATEGORY_DEFS.forEach((category, index) => buildCategoryWindow(category, index));
-  document.querySelectorAll('.pair-card').forEach(card => {
-    const category = categoryExists(card.dataset.category) ? card.dataset.category : 'Undefined';
-    card.dataset.category = category;
-    const grid = document.querySelector(`.category-window[data-category="${CSS.escape(category)}"] .grid`);
-    if (grid) grid.append(card);
-  });
-  document.querySelectorAll('.category-window').forEach(updateWindowStatus);
-}
-
-async function saveDesktopFolderPosition(icon) {
-  if (!icon || !HAS_OPEN_FOLDER) return;
-  const category = categoryData(icon.dataset.category);
-  try {
-    await fetch('/update_category', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        old_name: category.name,
-        name: category.name,
-        color: category.color,
-        icon: category.icon,
-        x: Math.max(0, Math.round(parseFloat(icon.style.left) || 0)),
-        y: Math.max(0, Math.round(parseFloat(icon.style.top) || 0)),
-      }),
-    });
-  } catch (e) {}
-}
-
-function initializeDesktopFolders() {
-  if (!desktopIconLayer) return;
-  normalizeDesktopFolderGridPositions();
-  document.querySelectorAll('.desktop-folder').forEach(icon => {
-    icon.addEventListener('click', (event) => {
-      if (icon.dataset.dragSuppressClick === '1') {
-        delete icon.dataset.dragSuppressClick;
-        return;
-      }
-      selectOnlyDesktopFolder(icon);
-      setActiveCategory(icon.dataset.category);
-    });
-    icon.addEventListener('dblclick', (event) => {
-      if (icon.dataset.dragSuppressClick === '1') return;
-      openCategoryWindow(icon.dataset.category);
-    });
-    icon.addEventListener('contextmenu', (event) => openFolderContextMenu(event, icon.dataset.category));
-    icon.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      hideDesktopMenus();
-      if (!icon.classList.contains('selected')) {
-        selectOnlyDesktopFolder(icon);
-      }
-      setActiveCategory(icon.dataset.category);
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const dragIcons = selectedDesktopFolderIcons();
-      const dragEntries = (dragIcons.length ? dragIcons : [icon]).map(item => ({
-        icon: item,
-        left: parseFloat(item.style.left) || 0,
-        top: parseFloat(item.style.top) || 0,
-      }));
-      let moved = false;
-      const move = (moveEvent) => {
-        moveEvent.preventDefault();
-        const dx = moveEvent.clientX - startX;
-        const dy = moveEvent.clientY - startY;
-        if (!moved && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
-          moved = true;
-          dragEntries.forEach(entry => entry.icon.classList.add('dragging'));
-        }
-        const clamped = clampDesktopGroupDelta(dragEntries, dx, dy);
-        dragEntries.forEach(entry => {
-          entry.icon.style.left = `${entry.left + clamped.dx}px`;
-          entry.icon.style.top = `${entry.top + clamped.dy}px`;
-        });
-      };
-      const up = () => {
-        document.removeEventListener('pointermove', move);
-        document.removeEventListener('pointerup', up);
-        document.removeEventListener('pointercancel', up);
-        dragEntries.forEach(entry => entry.icon.classList.remove('dragging'));
-        if (moved) {
-          const positions = findFreeDesktopGroupPositions(dragEntries, icon);
-          positions.forEach(({ icon: movedIcon, pos }) => {
-            movedIcon.style.left = `${pos.x}px`;
-            movedIcon.style.top = `${pos.y}px`;
-            movedIcon.dataset.dragSuppressClick = '1';
-            saveDesktopFolderPosition(movedIcon);
-          });
-        } else {
-          const now = Date.now();
-          selectOnlyDesktopFolder(icon);
-          setActiveCategory(icon.dataset.category);
-          if (lastDesktopFolderClick.name === icon.dataset.category && now - lastDesktopFolderClick.time < 350) {
-            openCategoryWindow(icon.dataset.category);
-            lastDesktopFolderClick = { name: '', time: 0 };
-          } else {
-            lastDesktopFolderClick = { name: icon.dataset.category, time: now };
-          }
-        }
-      };
-      document.addEventListener('pointermove', move, { passive: false });
-      document.addEventListener('pointerup', up, { once: true });
-      document.addEventListener('pointercancel', up, { once: true });
-    });
-  });
-}
-
-function initializeDesktopSelectionBox() {
-  if (!categoryDesktop) return;
-  categoryDesktop.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0) return;
-    if (event.target.closest('.desktop-folder') || event.target.closest('.category-window') || event.target.closest('.desktop-context-menu')) return;
-    event.preventDefault();
-    hideDesktopMenus();
-    clearDesktopFolderSelection();
-    const desktopRect = categoryDesktop.getBoundingClientRect();
-    const startX = event.clientX - desktopRect.left;
-    const startY = event.clientY - desktopRect.top;
-    const box = document.createElement('div');
-    box.className = 'desktop-selection-box';
-    box.style.left = `${startX}px`;
-    box.style.top = `${startY}px`;
-    box.style.width = '0px';
-    box.style.height = '0px';
-    categoryDesktop.append(box);
-    let moved = false;
-
-    const updateSelection = (moveEvent) => {
-      moveEvent.preventDefault();
-      const currentX = moveEvent.clientX - desktopRect.left;
-      const currentY = moveEvent.clientY - desktopRect.top;
-      const left = Math.max(0, Math.min(startX, currentX));
-      const top = Math.max(0, Math.min(startY, currentY));
-      const right = Math.min(desktopRect.width, Math.max(startX, currentX));
-      const bottom = Math.min(desktopRect.height, Math.max(startY, currentY));
-      moved = moved || Math.abs(currentX - startX) > 2 || Math.abs(currentY - startY) > 2;
-      box.style.left = `${left}px`;
-      box.style.top = `${top}px`;
-      box.style.width = `${Math.max(0, right - left)}px`;
-      box.style.height = `${Math.max(0, bottom - top)}px`;
-      document.querySelectorAll('.desktop-folder').forEach(icon => {
-        const iconLeft = (desktopIconLayer?.offsetLeft || 0) + (parseFloat(icon.style.left) || 0);
-        const iconTop = (desktopIconLayer?.offsetTop || 0) + (parseFloat(icon.style.top) || 0);
-        const iconRight = iconLeft + (icon.offsetWidth || DESKTOP_ICON_GRID_X);
-        const iconBottom = iconTop + (icon.offsetHeight || DESKTOP_ICON_GRID_Y);
-        const intersects = iconLeft < right && iconRight > left && iconTop < bottom && iconBottom > top;
-        setDesktopFolderSelected(icon, intersects);
-      });
-    };
-
-    const finishSelection = () => {
-      document.removeEventListener('pointermove', updateSelection);
-      document.removeEventListener('pointerup', finishSelection);
-      document.removeEventListener('pointercancel', finishSelection);
-      box.remove();
-      if (!moved) clearDesktopFolderSelection();
-      const firstSelected = selectedDesktopFolderIcons()[0];
-      if (firstSelected) setActiveCategory(firstSelected.dataset.category);
-    };
-
-    document.addEventListener('pointermove', updateSelection, { passive: false });
-    document.addEventListener('pointerup', finishSelection, { once: true });
-    document.addEventListener('pointercancel', finishSelection, { once: true });
-  });
-}
-
-function openCategoryDialog(name = '', position = null) {
-  const category = name ? categoryData(name) : null;
-  categoryOldName.value = category?.name || '';
-  categoryNameInput.value = category?.name || 'New Category';
-  categoryColorInput.value = category?.color || '#9ca3af';
-  const iconValue = category?.icon || 'undefined.png';
-  if (categoryIconInput && !Array.from(categoryIconInput.options).some(option => option.value === iconValue)) {
-    const option = document.createElement('option');
-    option.value = iconValue;
-    option.textContent = `Custom: ${iconValue}`;
-    const uploadOption = categoryIconInput.querySelector('option[value="__upload_icon__"]');
-    categoryIconInput.insertBefore(option, uploadOption || null);
-  }
-  categoryIconInput.value = iconValue;
-  previousCategoryIconValue = iconValue;
-  pendingNewFolderPosition = category ? null : position;
-  categoryDialogBackdrop?.classList.add('open');
-  categoryNameInput.focus();
-}
-
-function closeCategoryDialog() {
-  categoryDialogBackdrop?.classList.remove('open');
-  pendingNewFolderPosition = null;
-}
-
-function initializeCategoryDesktop() {
-  distributePairCardsToWindows();
-  initializeDesktopFolders();
-  initializeDesktopSelectionBox();
-  setActiveCategory(activeCategory);
-  const restoredActiveCategory = activeCategory;
-  restoreOpenCategoryWindows();
-  restoreFrontCategoryWindow(restoredActiveCategory);
-}
-
-categoryDesktop?.addEventListener('contextmenu', openDesktopContextMenu);
-desktopContextMenu?.addEventListener('click', (event) => {
-  const action = event.target.closest('button')?.dataset.action;
-  if (action === 'new-folder') {
-    const position = pendingNewFolderPosition;
-    hideDesktopMenus();
-    openCategoryDialog('', position);
-  }
-});
-folderContextMenu?.addEventListener('click', async (event) => {
-  const action = event.target.closest('button')?.dataset.action;
-  const name = contextFolderName;
-  hideDesktopMenus();
-  if (action === 'edit-folder') openCategoryDialog(name);
-  if (action === 'delete-folder') await deleteCategoryByName(name);
-});
-cardContextMenu?.addEventListener('click', (event) => {
-  const action = event.target.closest('button')?.dataset.action;
-  const card = contextCard;
-  hideDesktopMenus();
-  if (card && !card.classList.contains('selected')) selectOnlyPair(card);
-  if (action === 'copy-card') setPairClipboardFromSelection('copy');
-  if (action === 'cut-card') setPairClipboardFromSelection('move');
-});
-document.addEventListener('contextmenu', (event) => {
-  const card = event.target.closest('.pair-card');
-  if (card) openCardContextMenu(event, card);
-});
-document.addEventListener('click', (event) => {
-  if (!event.target.closest('.desktop-context-menu')) hideDesktopMenus();
-  if (!event.target.closest('.pair-card')) clearPairSelection();
-});
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') hideDesktopMenus();
-});
-document.getElementById('cancelCategoryDialogBtn')?.addEventListener('click', closeCategoryDialog);
-categoryDialogBackdrop?.addEventListener('click', (event) => {
-  if (event.target === categoryDialogBackdrop) closeCategoryDialog();
-});
-categoryDialog?.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const oldName = categoryOldName.value;
-  const payload = {
-    old_name: oldName,
-    name: categoryNameInput.value,
-    color: categoryColorInput.value,
-    icon: categoryIconInput.value,
-  };
-  if (!oldName && pendingNewFolderPosition) {
-    payload.x = pendingNewFolderPosition.x;
-    payload.y = pendingNewFolderPosition.y;
-  }
-  const url = oldName ? '/update_category' : '/create_category';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.ok) {
-    alert(data.error || 'Saving category failed.');
-    return;
-  }
-  suppressBeforeUnload = true;
-  window.location.reload();
-});
-addFilesForm?.addEventListener('submit', () => {
-  if (addFilesCategoryInput) addFilesCategoryInput.value = activeCategory;
-});
-
-categoryIconInput?.addEventListener('focus', () => {
-  if (categoryIconInput.value !== '__upload_icon__') previousCategoryIconValue = categoryIconInput.value;
-});
-categoryIconInput?.addEventListener('change', () => {
-  if (categoryIconInput.value !== '__upload_icon__') {
-    previousCategoryIconValue = categoryIconInput.value;
-    return;
-  }
-  categoryIconFileInput?.click();
-});
-categoryIconFileInput?.addEventListener('change', async () => {
-  const file = categoryIconFileInput.files?.[0];
-  categoryIconFileInput.value = '';
-  if (!file) {
-    categoryIconInput.value = previousCategoryIconValue || 'undefined.png';
-    return;
-  }
-  const formData = new FormData();
-  formData.append('icon', file, file.name || 'category_icon.png');
-  try {
-    const res = await fetch('/upload_category_icon', {
-      method: 'POST',
-      body: formData,
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok || !data.icon) throw new Error(data.error || 'Icon upload failed.');
-    if (!Array.from(categoryIconInput.options).some(option => option.value === data.icon)) {
-      const option = document.createElement('option');
-      option.value = data.icon;
-      option.textContent = `Custom: ${data.icon}`;
-      const uploadOption = categoryIconInput.querySelector('option[value="__upload_icon__"]');
-      categoryIconInput.insertBefore(option, uploadOption || null);
-    }
-    categoryIconInput.value = data.icon;
-    previousCategoryIconValue = data.icon;
-  } catch (err) {
-    alert(err?.message || 'Icon upload failed.');
-    categoryIconInput.value = previousCategoryIconValue || 'undefined.png';
-  }
-});
-initializeCategoryDesktop();
 
 function ensureState(index) {
   const existing = cropStates.get(index) || {};
@@ -5827,7 +4043,7 @@ function hasImageDrag(event) {
   return Array.from(event.dataTransfer?.files || []).some(isImageFile);
 }
 
-async function uploadImageFiles(files, sourceLabel = 'selected', targetCategory = activeCategory) {
+async function uploadImageFiles(files, sourceLabel = 'selected') {
   const imageFiles = imageFilesFromFileList(files);
   if (!imageFiles.length) return;
   if (!HAS_OPEN_FOLDER) {
@@ -5835,7 +4051,7 @@ async function uploadImageFiles(files, sourceLabel = 'selected', targetCategory 
     return;
   }
   if (typeof hasUnsavedChanges === 'function' && hasUnsavedChanges()) {
-    const ok = window.confirm('Add images? Unsaved edits remain in the current view.');
+    const ok = window.confirm('Add images and refresh the view? Unsaved edits will be discarded.');
     if (!ok) return;
   }
 
@@ -5844,7 +4060,6 @@ async function uploadImageFiles(files, sourceLabel = 'selected', targetCategory 
     const fallbackName = sourceLabel === 'pasted' ? `pasted_image_${i + 1}.png` : `image_${i + 1}.png`;
     formData.append('images', file, file.name || fallbackName);
   });
-  formData.append('category', categoryExists(targetCategory) ? targetCategory : 'Undefined');
 
   try {
     const res = await fetch('/upload_images', {
@@ -5857,8 +4072,8 @@ async function uploadImageFiles(files, sourceLabel = 'selected', targetCategory 
       alert(data.error || 'Failed to add images.');
       return;
     }
-    await importRenderedPairCards(data.added || []);
-    if (data.message) setStatusbarMessage(data.message);
+    suppressBeforeUnload = true;
+    window.location.reload();
   } catch (err) {
     alert(`Failed to add images: ${err}`);
   }
@@ -5889,15 +4104,17 @@ document.addEventListener('drop', async (event) => {
   event.preventDefault();
   imageDragDepth = 0;
   dropPasteOverlay?.classList.remove('show');
-  await uploadImageFiles(event.dataTransfer?.files || [], 'dropped', activeCategory);
+  await uploadImageFiles(event.dataTransfer?.files || [], 'dropped');
 });
 document.addEventListener('paste', async (event) => {
   const files = imageFilesFromClipboard(event.clipboardData);
   if (!files.length) return;
   event.preventDefault();
-  await uploadImageFiles(files, 'pasted', activeCategory);
+  await uploadImageFiles(files, 'pasted');
 });
 
+let textHeight = parseInt(localStorage.getItem('caption_app_text_height') || '110', 10);
+let imageHeight = parseInt(localStorage.getItem('caption_app_image_height') || '420', 10);
 let suppressBeforeUnload = false;
 document.body.classList.add('dark');
 localStorage.setItem('caption_app_theme', 'dark');
@@ -5918,29 +4135,25 @@ function saveToolsSettings() {
 
 function setTextHeight(value) {
   textHeight = value;
-  categoryTextHeights.clear();
   localStorage.setItem('caption_app_text_height', String(value));
   document.getElementById('textHeightSlider').value = value;
   document.getElementById('textHeightValue').textContent = value;
-  applyTextHeightToCards(Array.from(document.querySelectorAll('.pair-card')), value);
-  CATEGORY_DEFS.forEach(category => updateCategorySizingControls(category.name));
+  document.querySelectorAll('.caption-textarea').forEach(ta => { ta.style.height = value + 'px'; });
 }
 setTextHeight(textHeight);
 document.getElementById('textHeightSlider').addEventListener('input', e => setTextHeight(parseInt(e.target.value, 10)));
 
 function setImageHeight(value) {
   imageHeight = value;
-  categoryImageHeights.clear();
-  const cardMinWidth = cardMinWidthForImageHeight(value);
+  const cardMinWidth = Math.max(220, value + 24);
   localStorage.setItem('caption_app_image_height', String(value));
   document.getElementById('imageHeightSlider').value = value;
   document.getElementById('imageHeightValue').textContent = value;
   document.documentElement.style.setProperty('--card-min-width', cardMinWidth + 'px');
-  document.querySelectorAll('.category-window .grid').forEach(grid => {
-    grid.style.removeProperty('--card-min-width');
+  document.querySelectorAll('.crop-stage').forEach(stage => {
+    stage.style.width = value + 'px';
+    stage.style.maxWidth = '100%';
   });
-  applyImageHeightToCards(Array.from(document.querySelectorAll('.pair-card')), value);
-  CATEGORY_DEFS.forEach(category => updateCategorySizingControls(category.name));
 }
 setImageHeight(imageHeight);
 document.getElementById('imageHeightSlider').addEventListener('input', e => setImageHeight(parseInt(e.target.value, 10)));
@@ -6017,13 +4230,9 @@ document.querySelectorAll('input[name="crop_base"]').forEach(r => {
 
 function getAllowedBuckets() { return BUCKET_OPTIONS[String(currentCropBase)] || []; }
 
-function getCardsInCategory(category) {
-  return Array.from(document.querySelectorAll(`.category-window[data-category="${CSS.escape(category)}"] .pair-card`));
-}
-
-function getUnsavedCardIndexes(cards = null) {
+function getUnsavedCardIndexes() {
   const out = [];
-  (cards || Array.from(document.querySelectorAll('.pair-card'))).forEach(card => {
+  document.querySelectorAll('.pair-card').forEach(card => {
     const index = parseInt(card.dataset.index, 10);
     const ta = card.querySelector('.caption-textarea');
     const state = ensureState(index);
@@ -6098,6 +4307,7 @@ function updateCardIdentity(card, pair) {
   }
   const imgName = pair.img_name;
   const category = pair.category || 'Undefined';
+  const categoryIcon = pair.category_icon || CATEGORY_ICON_BY_NAME[category] || CATEGORY_ICON_BY_NAME['Undefined'];
 
   card.dataset.index = String(index);
   card.dataset.img = imgName;
@@ -6174,13 +4384,24 @@ function updateCardIdentity(card, pair) {
     saveBtn.classList.remove('unsaved', 'upscale-warning');
   }
 
+  const categoryBtn = card.querySelector('.category-btn');
+  if (categoryBtn) {
+    categoryBtn.dataset.category = category;
+    categoryBtn.title = category;
+    const iconImg = categoryBtn.querySelector('img');
+    if (iconImg) {
+      iconImg.src = `/category_icon/${encodeURIComponent(categoryIcon)}`;
+      iconImg.alt = category;
+    }
+  }
+
   const ta = card.querySelector('.caption-textarea');
   if (ta) {
     ta.dataset.index = String(index);
     ta.dataset.img = imgName;
     ta.dataset.original = pair.text || '';
     ta.value = pair.text || '';
-    ta.style.height = `${getCategoryTextHeight(card.dataset.category)}px`;
+    ta.style.height = textHeight + 'px';
     ta.classList.remove('unsaved');
   }
 
@@ -6205,91 +4426,12 @@ function getNextCardIndex() {
 }
 
 function resetClonedCardBindings(card) {
-  card.classList.remove('selected');
   card.querySelectorAll('[data-bound], [data-bound-input], [data-bound-click], [data-bound-dblclick]').forEach(el => {
     delete el.dataset.bound;
     delete el.dataset.boundInput;
     delete el.dataset.boundClick;
     delete el.dataset.boundDblclick;
   });
-}
-
-function attachCropImageLoadListener(img) {
-  if (!img || img.dataset.boundLoad) return;
-  img.dataset.boundLoad = '1';
-  img.addEventListener('load', () => {
-    const m = img.id.match(/crop-image-(\d+)/);
-    if (m) {
-      const index = parseInt(m[1], 10);
-      renderImageTransform(index);
-      renderCrop(index);
-    }
-  });
-}
-
-function prepareInsertedPairCard(card) {
-  if (!card) return;
-  resetClonedCardBindings(card);
-  const ta = card.querySelector('.caption-textarea');
-  if (ta) {
-    const original = decodeCaptionFieldValue(ta.dataset.original ?? "");
-    ta.dataset.original = original;
-    ta.value = decodeCaptionFieldValue(ta.value);
-    if (ta.value !== original) ta.value = original;
-  }
-  attachCardEventListeners(card);
-  attachCropImageLoadListener(card.querySelector('.crop-stage img'));
-  applyCategorySizingToCard(card);
-  const index = parseInt(card.dataset.index, 10);
-  if (Number.isFinite(index)) {
-    ensureState(index);
-    renderImageTransform(index);
-    renderCrop(index);
-    markUnsaved(index);
-  }
-}
-
-function refreshDesktopCategoryCountsFromCards() {
-  const counts = new Map();
-  document.querySelectorAll('.pair-card').forEach(card => {
-    const category = categoryExists(card.dataset.category) ? card.dataset.category : 'Undefined';
-    counts.set(category, (counts.get(category) || 0) + 1);
-  });
-  document.querySelectorAll('.desktop-folder').forEach(icon => {
-    const count = counts.get(icon.dataset.category) || 0;
-    const countEl = icon.querySelector('.desktop-folder-count');
-    if (countEl) countEl.textContent = `${count} images`;
-  });
-}
-
-async function importRenderedPairCards(imgNames) {
-  const wanted = new Set(imgNames || []);
-  if (!wanted.size) return [];
-  const res = await fetch(window.location.href, {
-    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const html = await res.text();
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const imported = [];
-  Array.from(doc.querySelectorAll('.pair-card')).forEach(card => {
-    if (!wanted.has(card.dataset.img)) return;
-    document.querySelector(`.pair-card[data-img="${CSS.escape(card.dataset.img)}"]`)?.remove();
-    const category = categoryExists(card.dataset.category) ? card.dataset.category : 'Undefined';
-    const grid = document.querySelector(`.category-window[data-category="${CSS.escape(category)}"] .grid`);
-    if (!grid) return;
-    const nextCard = document.importNode(card, true);
-    grid.append(nextCard);
-    prepareInsertedPairCard(nextCard);
-    imported.push(nextCard);
-  });
-  updateDimsColors();
-  updateAllCaptionStats();
-  updateSaveAllButtonState();
-  updateAllWindowStatuses();
-  refreshDesktopCategoryCountsFromCards();
-  return imported;
 }
 
 async function handleDeleteButton(btn, event) {
@@ -6315,9 +4457,8 @@ async function handleDeleteButton(btn, event) {
 
     cropStates.delete(index);
 
-    selectedImgNames.delete(img);
+    if (categoryPopoverCard === card) closeCategoryPopover();
     card?.remove();
-    updateAllWindowStatuses();
   } catch (err) {
     btn.disabled = false;
     alert(err?.message || 'Delete failed');
@@ -6345,11 +4486,10 @@ async function handleCloneButton(btn, event) {
     updateCardIdentity(newCard, data.pair);
     sourceCard.insertAdjacentElement('afterend', newCard);
     attachCardEventListeners(newCard);
-    applyCategorySizingToCard(newCard);
+    setImageHeight(imageHeight);
     updateDimsColors();
     renderCrop(parseInt(newCard.dataset.index, 10));
     markUnsaved(parseInt(newCard.dataset.index, 10));
-    updateAllWindowStatuses();
   } catch (err) {
     alert(err?.message || 'Clone failed');
   } finally {
@@ -6398,56 +4538,6 @@ async function finishInlineRename(card, input, cancelOnly = false) {
   }
 }
 
-function selectOnlyPair(card) {
-  if (!card) return;
-  const imgName = card.dataset.img;
-  if (!imgName) return;
-  window.getSelection?.()?.removeAllRanges?.();
-  selectedImgNames.clear();
-  document.querySelectorAll('.pair-card.selected').forEach(item => item.classList.remove('selected'));
-  selectedImgNames.add(imgName);
-  card.classList.add('selected');
-  updateAllWindowStatuses();
-}
-
-function togglePairSelection(card) {
-  if (!card) return;
-  const imgName = card.dataset.img;
-  if (!imgName) return;
-  window.getSelection?.()?.removeAllRanges?.();
-  if (selectedImgNames.has(imgName)) {
-    selectedImgNames.delete(imgName);
-    card.classList.remove('selected');
-  } else {
-    selectedImgNames.add(imgName);
-    card.classList.add('selected');
-  }
-  updateAllWindowStatuses();
-}
-
-function clearPairSelection() {
-  selectedImgNames.clear();
-  document.querySelectorAll('.pair-card.selected').forEach(card => card.classList.remove('selected'));
-  updateAllWindowStatuses();
-}
-
-function clearCutPendingCards() {
-  document.querySelectorAll('.pair-card.cut-pending').forEach(card => card.classList.remove('cut-pending'));
-}
-
-function markCutPendingCards(imgNames) {
-  clearCutPendingCards();
-  const names = new Set(imgNames || []);
-  document.querySelectorAll('.pair-card').forEach(card => {
-    if (names.has(card.dataset.img)) card.classList.add('cut-pending');
-  });
-}
-
-function clearPairClipboard() {
-  pairClipboard = null;
-  clearCutPendingCards();
-}
-
 function beginInlineRename(card) {
   const filenameEl = card.querySelector('.filename');
   if (!filenameEl || filenameEl.querySelector('input')) return;
@@ -6491,7 +4581,7 @@ function attachCardEventListeners(card) {
   if (ta && !ta.dataset.boundInput) {
     ta.dataset.boundInput = '1';
     ta.addEventListener('input', () => markUnsaved(parseInt(ta.dataset.index, 10)));
-    ta.style.height = `${getCategoryTextHeight(card.dataset.category)}px`;
+    ta.style.height = textHeight + 'px';
     updateCaptionStats(ta);
   }
 
@@ -6551,16 +4641,13 @@ function attachCardEventListeners(card) {
     cloneBtn.addEventListener('click', async (event) => { await handleCloneButton(cloneBtn, event); });
   }
 
-  const cardHead = card.querySelector('.card-head');
-  if (cardHead && !cardHead.dataset.boundClick) {
-    cardHead.dataset.boundClick = '1';
-    cardHead.addEventListener('click', (event) => {
-      if (event.target.closest('input, button')) return;
-      if (event.ctrlKey || event.metaKey) {
-        togglePairSelection(card);
-      } else {
-        selectOnlyPair(card);
-      }
+  const categoryBtn = card.querySelector('.category-btn');
+  if (categoryBtn && !categoryBtn.dataset.boundClick) {
+    categoryBtn.dataset.boundClick = '1';
+    categoryBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openCategoryPopover(card, categoryBtn);
     });
   }
 
@@ -7079,13 +5166,6 @@ function autoCropAll() {
   });
 }
 
-function autoCropCategory(category) {
-  getCardsInCategory(category).forEach(card => {
-    const index = parseInt(card.dataset.index, 10);
-    autoCrop(index);
-  });
-}
-
 function undoCard(index) {
   const card = document.querySelector(`.pair-card[data-index="${index}"]`);
   const ta = card.querySelector('.caption-textarea');
@@ -7116,9 +5196,134 @@ function toggleFlip(index, axis) {
   markUnsaved(index);
 }
 
+const categoryPopover = document.getElementById('categoryPopover');
+const categoryOptionGrid = document.getElementById('categoryOptionGrid');
+const closeCategoryPopoverBtn = document.getElementById('closeCategoryPopoverBtn');
+let categoryPopoverCard = null;
+
 function getCardByIndex(index) {
   return document.querySelector(`.pair-card[data-index="${index}"]`);
 }
+
+function updateCardCategoryUi(card, category) {
+  if (!card) return;
+  const normalized = CATEGORY_ICON_BY_NAME[category] ? category : 'Undefined';
+  card.dataset.category = normalized;
+  const btn = card.querySelector('.category-btn');
+  if (btn) {
+    btn.dataset.category = normalized;
+    btn.title = normalized;
+    const img = btn.querySelector('img');
+    if (img) {
+      img.src = `/category_icon/${CATEGORY_ICON_BY_NAME[normalized]}?t=${Date.now()}`;
+      img.alt = normalized;
+    }
+  }
+  renderCategoryOptions();
+}
+
+function categoryDisplayParts(name) {
+  const label = String(name || '');
+  for (const prefix of ['Close-up', 'Medium', 'Full body']) {
+    if (label === prefix) return { prefix, suffix: '' };
+    if (label.startsWith(prefix + ' ')) {
+      return { prefix, suffix: label.slice(prefix.length + 1) };
+    }
+  }
+  return { prefix: '', suffix: label };
+}
+
+function renderCategoryOptions() {
+  if (!categoryOptionGrid) return;
+  const activeCategory = categoryPopoverCard?.dataset.category || 'Undefined';
+  const rows = [
+    CATEGORY_DEFS.filter(item => item.name.includes('Close-up')),
+    CATEGORY_DEFS.filter(item => item.name.includes('Medium')),
+    CATEGORY_DEFS.filter(item => item.name.includes('Full body')),
+    CATEGORY_DEFS.filter(item => item.name === 'Undefined'),
+  ].filter(row => row.length);
+  categoryOptionGrid.innerHTML = rows.map(row => `
+    <div class="category-option-row">
+      ${row.map(item => {
+        const label = categoryDisplayParts(item.name);
+        return `
+        <button type="button" class="category-option-btn ${item.name === activeCategory ? 'active' : ''}" data-category="${item.name}" title="${item.name}">
+          <span class="category-icon-circle"><img src="/category_icon/${item.icon}" alt="${item.name}"></span>
+          <span class="category-option-label">
+            ${label.prefix ? `<span class="category-option-label-prefix">${label.prefix}</span>` : ''}
+            <span class="category-option-label-suffix">${label.suffix}</span>
+          </span>
+        </button>
+      `;
+      }).join('')}
+    </div>
+  `).join('');
+  categoryOptionGrid.querySelectorAll('.category-option-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!categoryPopoverCard) return;
+      const imgName = categoryPopoverCard.dataset.img;
+      const category = btn.dataset.category || 'Undefined';
+      try {
+        const res = await fetch('/set_category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ img_name: imgName, category }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to set category');
+        updateCardCategoryUi(categoryPopoverCard, data.category || category);
+        closeCategoryPopover();
+      } catch (err) {
+        alert(err?.message || 'Failed to set category');
+      }
+    });
+  });
+}
+
+function closeCategoryPopover() {
+  if (categoryPopover) categoryPopover.hidden = true;
+  categoryPopoverCard = null;
+}
+
+function openCategoryPopover(card, anchorBtn) {
+  if (!categoryPopover || !card || !anchorBtn) return;
+  categoryPopoverCard = card;
+  renderCategoryOptions();
+  const rect = anchorBtn.getBoundingClientRect();
+  categoryPopover.hidden = false;
+  requestAnimationFrame(() => {
+    const popRect = categoryPopover.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - popRect.width / 2;
+    let top = rect.bottom + 8;
+    left = Math.max(12, Math.min(left, window.innerWidth - popRect.width - 12));
+    if (top + popRect.height > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - popRect.height - 8);
+    }
+    categoryPopover.style.left = `${left}px`;
+    categoryPopover.style.top = `${top}px`;
+  });
+}
+
+closeCategoryPopoverBtn?.addEventListener('click', closeCategoryPopover);
+document.addEventListener('click', (e) => {
+  const categoryBtn = e.target.closest('.category-btn');
+  if (categoryBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const card = categoryBtn.closest('.pair-card');
+    if (categoryPopoverCard === card && categoryPopover && !categoryPopover.hidden) {
+      closeCategoryPopover();
+    } else {
+      openCategoryPopover(card, categoryBtn);
+    }
+    return;
+  }
+  if (!categoryPopover?.hidden && !e.target.closest('#categoryPopover')) {
+    closeCategoryPopover();
+  }
+});
+window.addEventListener('resize', closeCategoryPopover);
+window.addEventListener('scroll', closeCategoryPopover, true);
 
 async function saveCard(index) {
   const card = document.querySelector(`.pair-card[data-index="${index}"]`);
@@ -7205,22 +5410,6 @@ async function saveAllCards() {
   updateSaveAllButtonState();
 }
 
-async function saveCategoryCards(category) {
-  const indexes = getUnsavedCardIndexes(getCardsInCategory(category));
-  if (!indexes.length) return;
-
-  const hasUpscale = indexes.some(i => ensureState(i).upscale);
-  if (hasUpscale) {
-    const ok = window.confirm('Some selected crops in this category will upscale the image and may reduce quality. Continue saving?');
-    if (!ok) return;
-  }
-
-  for (const i of indexes) {
-    await saveCard(i);
-  }
-  updateSaveAllButtonState();
-}
-
 async function renameAllPairs() {
   const prefix = window.prompt('Enter filename prefix for all pairs:');
   if (prefix === null) return;
@@ -7239,30 +5428,8 @@ async function renameAllPairs() {
   window.location.reload();
 }
 
-async function renameCategoryPairs(category) {
-  const prefix = window.prompt(`Enter filename prefix for ${category}:`);
-  if (prefix === null) return;
-
-  saveOpenCategoryWindows();
-  localStorage.setItem(activeCategoryWindowStorageKey(), category);
-
-  const res = await fetch('/rename_all_pairs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prefix, category })
-  });
-  const data = await res.json();
-  if (!res.ok || !data.ok) {
-    alert(data.error || 'Rename category failed');
-    return;
-  }
-  suppressBeforeUnload = true;
-  window.location.reload();
-}
-
 function confirmReplace() {
-  const scope = toolsCategoryScope ? `the ${toolsCategoryScope} category` : 'all caption files in the opened folder';
-  return window.confirm(`Apply this search/replace to ${scope}?`);
+  return window.confirm('Apply this search/replace to all caption files in the opened folder?');
 }
 
 document.querySelectorAll('.pair-card').forEach(card => attachCardEventListeners(card));
@@ -7352,6 +5519,7 @@ document.addEventListener("keydown", (e) => {
     closeJoyModal();
     closeSummaryModal();
     closeToolsModal();
+    closeCategoryPopover();
   }
 });
 
@@ -7582,9 +5750,9 @@ async function pollJoyStatus() {
     const res = await fetch('/joycaption_status');
     const data = await res.json();
     const total = Number.isFinite(Number(data.total)) ? Number(data.total) : 0;
-    if (joyStatusText) {
-      joyStatusText.textContent = data.status || '';
-    }
+    joyStatusText.textContent = total > 0
+      ? `${data.status} | captions: ${data.count}/${total}`
+      : `${data.status} | captions: ${data.count}`;
     updateJoyProgress(data.count, total);
     joyLogBox.textContent = data.log || '';
     if (!joyAutoScroll || joyAutoScroll.checked) {
@@ -7660,11 +5828,30 @@ function renderCategoryPieChart(data) {
     `;
   }
 
+  const closeupPalette = ['#4ade80', '#22c55e', '#22c55e', '#34d399', '#34d399', '#166534', '#16a34a', '#16a34a'];
+  const mediumPalette = ['#fde047', '#eab308', '#854d0e'];
+  const fullbodyPalette = ['#f87171', '#dc2626', '#7f1d1d'];
   const neutralColor = '#9ca3af';
 
   function colorForCategory(name) {
-    const item = allItems.find(entry => entry.name === name);
-    return item?.color || neutralColor;
+    const label = String(name || '');
+    const closeupOrder = ['Close-up Front', 'Close-up Left', 'Close-up Right', 'Close-up Front-left', 'Close-up Front-right', 'Close-up Back', 'Close-up From Above', 'Close-up From Below'];
+    const mediumOrder = ['Medium Front', 'Medium Profile', 'Medium Back'];
+    const fullbodyOrder = ['Full body Front', 'Full body Profile', 'Full body Back'];
+
+    if (label.startsWith('Close-up')) {
+      const idx = closeupOrder.indexOf(label);
+      return closeupPalette[idx >= 0 ? idx : 0];
+    }
+    if (label.startsWith('Medium')) {
+      const idx = mediumOrder.indexOf(label);
+      return mediumPalette[idx >= 0 ? idx : 0];
+    }
+    if (label.startsWith('Full body')) {
+      const idx = fullbodyOrder.indexOf(label);
+      return fullbodyPalette[idx >= 0 ? idx : 0];
+    }
+    return neutralColor;
   }
 
   let start = 0;
@@ -7711,7 +5898,8 @@ function renderCategoryPieChart(data) {
     start = end;
   });
 
-  const legendItems = (allItems.length ? allItems : items);
+  const legendItems = (allItems.length ? allItems : items)
+    .filter(item => String(item.name || '') !== 'Undefined');
   const legend = legendItems.map(item => {
     const value = Number(item.count) || 0;
     const percent = total ? Math.round((value / total) * 100) : 0;
@@ -7725,6 +5913,15 @@ function renderCategoryPieChart(data) {
     `;
   }).join('');
 
+  const grouped = data?.category_group_percentages || {};
+  const groupedHtml = `
+    <div class="summary-category-group-block">
+      <div><span style="background:${closeupPalette[1]};"></span>Close-up ${grouped.portrait ?? 0}%</div>
+      <div><span style="background:${mediumPalette[1]};"></span>Medium ${grouped.kneeup ?? 0}%</div>
+      <div><span style="background:${fullbodyPalette[1]};"></span>Full body ${grouped.fullbody ?? 0}%</div>
+    </div>
+  `;
+
   return `
     <div class="summary-chart-title">Categories</div>
     <div class="summary-pie-layout">
@@ -7736,6 +5933,7 @@ function renderCategoryPieChart(data) {
       </div>
       <div class="summary-pie-legend-wrap">
         <div class="summary-pie-legend">${legend}</div>
+        ${groupedHtml}
       </div>
     </div>
   `;
@@ -7870,70 +6068,21 @@ const toolsResult = document.getElementById("toolsResult");
 const replaceForm = document.getElementById("replaceForm");
 const countForm = document.getElementById("countForm");
 const triggerForm = document.getElementById("triggerForm");
-let toolsCategoryScope = '';
 
 loadToolsSettings();
 document.getElementById('sr_use_regex')?.addEventListener('change', saveToolsSettings);
 
-function openToolsModal(category = '') {
-  toolsCategoryScope = categoryExists(category) ? category : '';
-  document.querySelectorAll('.tools-category-input').forEach(input => { input.value = toolsCategoryScope; });
-  const title = document.getElementById('toolsModalTitle');
-  if (title) title.textContent = toolsCategoryScope ? `Text tools - ${toolsCategoryScope}` : 'Text tools';
+function openToolsModal() {
   toolsModalBackdrop?.classList.add("open");
 }
 function closeToolsModal() {
   toolsModalBackdrop?.classList.remove("open");
-  toolsCategoryScope = '';
-  document.querySelectorAll('.tools-category-input').forEach(input => { input.value = ''; });
-  const title = document.getElementById('toolsModalTitle');
-  if (title) title.textContent = 'Text tools';
 }
-openToolsModalBtnInline?.addEventListener("click", () => openToolsModal(''));
+openToolsModalBtnInline?.addEventListener("click", openToolsModal);
 closeToolsModalBtn?.addEventListener("click", closeToolsModal);
 toolsModalBackdrop?.addEventListener("click", (e) => {
   if (e.target === toolsModalBackdrop) closeToolsModal();
 });
-
-function makeModalDraggable(backdrop) {
-  const modal = backdrop?.querySelector('.joy-modal');
-  const head = modal?.querySelector('.joy-modal-head');
-  if (!modal || !head || head.dataset.draggableBound) return;
-  head.dataset.draggableBound = '1';
-  head.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || event.target.closest('button, input, textarea, select, a')) return;
-    event.preventDefault();
-    const rect = modal.getBoundingClientRect();
-    modal.style.position = 'fixed';
-    modal.style.left = `${rect.left}px`;
-    modal.style.top = `${rect.top}px`;
-    modal.style.width = `${rect.width}px`;
-    modal.style.maxWidth = 'none';
-    modal.style.margin = '0';
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const startLeft = rect.left;
-    const startTop = rect.top;
-    head.setPointerCapture?.(event.pointerId);
-    const move = (moveEvent) => {
-      moveEvent.preventDefault();
-      const nextLeft = Math.max(4, Math.min(window.innerWidth - 80, startLeft + moveEvent.clientX - startX));
-      const nextTop = Math.max(4, Math.min(window.innerHeight - 48, startTop + moveEvent.clientY - startY));
-      modal.style.left = `${nextLeft}px`;
-      modal.style.top = `${nextTop}px`;
-    };
-    const up = () => {
-      head.removeEventListener('pointermove', move);
-      head.removeEventListener('pointerup', up);
-      head.removeEventListener('pointercancel', up);
-    };
-    head.addEventListener('pointermove', move, { passive: false });
-    head.addEventListener('pointerup', up, { once: true });
-    head.addEventListener('pointercancel', up, { once: true });
-  });
-}
-
-[joyModalBackdrop, summaryModalBackdrop, toolsModalBackdrop].forEach(makeModalDraggable);
 
 replaceForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -8060,11 +6209,7 @@ function hasUnsavedChanges() {
 }
 
 function resetAllUnsavedChanges() {
-  resetCardsUnsavedChanges(Array.from(document.querySelectorAll('.pair-card')));
-}
-
-function resetCardsUnsavedChanges(cards) {
-  (cards || []).forEach(card => {
+  document.querySelectorAll('.pair-card').forEach(card => {
     const index = parseInt(card.dataset.index, 10);
     const ta = card.querySelector('.caption-textarea');
     ta.value = ta.dataset.original ?? "";
@@ -8085,12 +6230,6 @@ function resetCardsUnsavedChanges(cards) {
   });
 }
 
-function resetCategoryUnsavedChanges(category) {
-  const cards = getCardsInCategory(category);
-  if (!getUnsavedCardIndexes(cards).length) return;
-  resetCardsUnsavedChanges(cards);
-}
-
 window.addEventListener('beforeunload', (e) => {
   if (suppressBeforeUnload) return;
   if (!hasUnsavedChanges()) return;
@@ -8098,95 +6237,14 @@ window.addEventListener('beforeunload', (e) => {
   e.returnValue = '';
 });
 
-function isTypingElement(element = document.activeElement) {
-  const tag = (element?.tagName || '').toLowerCase();
-  return (
-    ['input', 'textarea', 'select'].includes(tag) ||
-    !!element?.isContentEditable
-  );
-}
-
-document.addEventListener('cut', (event) => {
-  if (isTypingElement(event.target)) return;
-  if (!selectedImgNames.size) return;
-  event.preventDefault();
-  event.stopPropagation();
-  window.getSelection?.()?.removeAllRanges?.();
-});
-
-document.addEventListener('copy', (event) => {
-  if (isTypingElement(event.target)) return;
-  if (!selectedImgNames.size) return;
-  event.preventDefault();
-  event.stopPropagation();
-  window.getSelection?.()?.removeAllRanges?.();
-});
-
 document.addEventListener('keydown', async (e) => {
   const isMod = e.ctrlKey || e.metaKey;
-  const typingIntoField = isTypingElement();
+  const tag = (document.activeElement?.tagName || '').toLowerCase();
+  const typingIntoField =
+    ['input', 'textarea', 'select'].includes(tag) ||
+    document.activeElement?.isContentEditable;
 
   const isSave = (e.key === 's' || e.key === 'S');
-  const isCopy = (e.key === 'c' || e.key === 'C');
-  const isCut = (e.key === 'x' || e.key === 'X');
-  const isPaste = (e.key === 'v' || e.key === 'V');
-  if (isMod && !typingIntoField && (isCopy || isCut)) {
-    if (selectedImgNames.size) {
-      e.preventDefault();
-      e.stopPropagation();
-      window.getSelection?.()?.removeAllRanges?.();
-      setPairClipboardFromSelection(isCut ? 'move' : 'copy');
-    }
-    return;
-  }
-  if (isMod && !typingIntoField && isPaste) {
-  if (pairClipboard?.img_names?.length) {
-      e.preventDefault();
-      if (typeof hasUnsavedChanges === 'function' && hasUnsavedChanges()) {
-        const ok = window.confirm('Move or copy selected pairs? Unsaved edits remain in the current view.');
-        if (!ok) return;
-      }
-      try {
-        const res = await fetch('/move_pairs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            img_names: pairClipboard.img_names,
-            category: activeCategory,
-            mode: pairClipboard.mode,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          alert(data.error || 'Move/copy failed.');
-          return;
-        }
-        const targetCategory = data.category || activeCategory;
-        if (data.mode === 'copy') {
-          await importRenderedPairCards(data.changed || []);
-        } else {
-          const targetGrid = document.querySelector(`.category-window[data-category="${CSS.escape(targetCategory)}"] .grid`);
-          (data.changed || []).forEach(imgName => {
-            const card = document.querySelector(`.pair-card[data-img="${CSS.escape(imgName)}"]`);
-            if (!card || !targetGrid) return;
-            card.dataset.category = targetCategory;
-            card.classList.remove('selected', 'cut-pending');
-            targetGrid.append(card);
-            applyCategorySizingToCard(card);
-          });
-          selectedImgNames.clear();
-          updateAllWindowStatuses();
-          refreshDesktopCategoryCountsFromCards();
-        }
-        clearPairClipboard();
-        setStatusbarMessage(`${data.mode === 'copy' ? 'Copied' : 'Moved'} ${(data.changed || []).length} card${(data.changed || []).length === 1 ? '' : 's'} to ${targetCategory}.`);
-      } catch (err) {
-        alert(`Move/copy failed: ${err}`);
-      }
-    }
-    return;
-  }
-
   if (isMod && isSave) {
     e.preventDefault();
     await saveAllCards();
@@ -8209,11 +6267,6 @@ document.addEventListener('keydown', async (e) => {
       e.preventDefault();
       resetAllUnsavedChanges();
     }
-    return;
-  }
-
-  if (e.key === 'Escape' && !typingIntoField) {
-    clearPairClipboard();
     return;
   }
 });
@@ -8267,22 +6320,6 @@ def build_pairs_context():
     return pair_dicts
 
 
-def build_category_icon_options(folders):
-    options = []
-    seen = set()
-    for item in CATEGORY_DEFS:
-        icon = item.get("icon")
-        if icon and icon not in seen:
-            options.append({"name": item.get("name", icon), "icon": icon})
-            seen.add(icon)
-    for item in folders or []:
-        icon = item.get("icon") if isinstance(item, dict) else None
-        if icon and icon not in seen and is_valid_category_icon(icon):
-            options.append({"name": f"Custom: {icon}", "icon": icon})
-            seen.add(icon)
-    return options
-
-
 @app.after_request
 def add_no_cache_headers(response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -8294,15 +6331,6 @@ def add_no_cache_headers(response):
 @app.route("/", methods=["GET"])
 def index():
     pair_dicts = build_pairs_context() if current_folder else []
-    folders = category_folders or default_category_folders()
-    category_counts = defaultdict(int)
-    for pair in pair_dicts:
-        category_counts[pair.get("category", DEFAULT_CATEGORY)] += 1
-    category_context = []
-    for item in folders:
-        folder_item = dict(item)
-        folder_item["count"] = category_counts.get(item.get("name"), 0)
-        category_context.append(folder_item)
     bucket_options_json = json.dumps({
         str(base): get_bucket_options(base)
         for base in [512, 768, 1024, 1280, 1536]
@@ -8315,16 +6343,14 @@ def index():
         selected_crop_base=selected_crop_base,
         bucket_options_json=bucket_options_json,
         joy_model_data_json=json.dumps(JOYCLI_MODEL_OPTIONS),
-        category_defs_json=json.dumps(category_context),
-        category_folders=category_context,
-        icon_options=build_category_icon_options(category_context),
+        category_defs_json=json.dumps(CATEGORY_DEFS),
     )
 
 
 
 @app.route("/add_files", methods=["POST"])
 def add_files():
-    global current_folder, pairs_cache, message, folder_name, category_assignments
+    global current_folder, pairs_cache, message, folder_name
 
     if not current_folder or not os.path.isdir(current_folder):
         message = "No folder is open. Open a folder first."
@@ -8361,7 +6387,6 @@ def add_files():
     if not selected_files:
         return redirect(url_for("index"))
 
-    target_category = normalize_category_name(request.form.get("category"))
     folder_path = Path(current_folder)
     added_count = 0
 
@@ -8392,11 +6417,9 @@ def add_files():
         txt_path = dest_path.with_suffix(".txt")
         if not txt_path.exists():
             txt_path.write_text("", encoding="utf-8")
-        category_assignments[dest_path.name] = target_category
         added_count += 1
 
     pairs_cache = load_pairs(current_folder)
-    save_category_assignments(current_folder, category_assignments)
     folder_name = os.path.basename(current_folder) if current_folder else ""
     message = f"Added {added_count} file(s)." if added_count else "No new files were added."
     return redirect(url_for("index"))
@@ -8404,7 +6427,7 @@ def add_files():
 
 @app.route("/upload_images", methods=["POST"])
 def upload_images():
-    global current_folder, pairs_cache, message, folder_name, category_assignments
+    global current_folder, pairs_cache, message, folder_name
 
     if not current_folder or not os.path.isdir(current_folder):
         return jsonify({"ok": False, "error": "Open a folder before adding images."}), 400
@@ -8413,7 +6436,6 @@ def upload_images():
     if not uploads:
         return jsonify({"ok": False, "error": "No image files were uploaded."}), 400
 
-    target_category = normalize_category_name(request.form.get("category"))
     folder_path = Path(current_folder)
     added = []
     skipped = []
@@ -8445,11 +6467,9 @@ def upload_images():
         txt_path = target_path.with_suffix(".txt")
         if not txt_path.exists():
             txt_path.write_text("", encoding="utf-8")
-        category_assignments[target_name] = target_category
         added.append(target_name)
 
     pairs_cache = load_pairs(current_folder)
-    save_category_assignments(current_folder, category_assignments)
     folder_name = os.path.basename(current_folder) if current_folder else ""
 
     if added:
@@ -8467,7 +6487,7 @@ def upload_images():
 
 @app.route("/open_folder", methods=["POST"])
 def open_folder():
-    global current_folder, pairs_cache, message, folder_name, category_assignments, category_folders, selected_crop_base
+    global current_folder, pairs_cache, message, folder_name, category_assignments, selected_crop_base
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
@@ -8483,7 +6503,7 @@ def open_folder():
 
     current_folder = folder
     folder_name = folder
-    category_assignments, category_folders = load_category_state(folder)
+    category_assignments = load_category_assignments(folder)
     missing = ensure_missing_txt(folder)
     if missing:
         default_caption = request.form.get("default_caption", "")
@@ -8563,7 +6583,7 @@ def convert_images_to_png():
 
 @app.route("/close_folder", methods=["POST"])
 def close_folder():
-    global current_folder, pairs_cache, message, folder_name, category_assignments, category_folders
+    global current_folder, pairs_cache, message, folder_name, category_assignments
 
     if joycaption_status.get("running"):
         joycaption_status["interrupt_requested"] = True
@@ -8575,7 +6595,6 @@ def close_folder():
     message = ""
     folder_name = ""
     category_assignments = {}
-    category_folders = []
     return redirect(url_for("index"))
 
 
@@ -8589,35 +6608,6 @@ def category_icon(filename):
     return send_from_directory(APP_DIR / "images", filename)
 
 
-@app.route("/upload_category_icon", methods=["POST"])
-def upload_category_icon():
-    storage = request.files.get("icon")
-    if not storage:
-        return jsonify({"ok": False, "error": "No icon file was uploaded."}), 400
-
-    ext = upload_image_extension(storage)
-    if not ext:
-        return jsonify({"ok": False, "error": "Unsupported icon file type."}), 400
-
-    data = storage.read()
-    if not data:
-        return jsonify({"ok": False, "error": "Icon file is empty."}), 400
-
-    try:
-        with Image.open(io.BytesIO(data)) as img:
-            img.verify()
-    except Exception:
-        return jsonify({"ok": False, "error": "The selected file is not a valid image."}), 400
-
-    stem = clean_upload_stem(storage.filename, fallback="category_icon")
-    digest = hashlib.sha256(data).hexdigest()[:10]
-    target_name = f"category_icon_{stem}_{digest}{ext}"
-    target_path = APP_DIR / "images" / target_name
-    if not target_path.exists():
-        target_path.write_bytes(data)
-    return jsonify({"ok": True, "icon": target_name})
-
-
 @app.route("/switch/video", methods=["POST", "GET"])
 def switch_to_video():
     remember_app("video")
@@ -8626,12 +6616,12 @@ def switch_to_video():
     return switch_page("http://127.0.0.1:5001/", "Video Prep")
 
 
-@app.route("/switch/simple", methods=["POST", "GET"])
-def switch_to_simple():
-    remember_app("simple")
-    launch_local_app_after_port_closes("imageprep_simple.py", 5000)
+@app.route("/switch/advanced", methods=["POST", "GET"])
+def switch_to_advanced():
+    remember_app("image")
+    launch_local_app_after_port_closes("imageprep.py", 5000)
     exit_soon()
-    return switch_page("http://127.0.0.1:5000/", "Simple Image Prep")
+    return switch_page("http://127.0.0.1:5000/", "Advanced Image Prep")
 
 
 @app.route("/rename_all_pairs", methods=["POST"])
@@ -8642,19 +6632,13 @@ def rename_all_pairs():
 
     data = request.get_json(force=True) or {}
     prefix = str(data.get("prefix", ""))
-    category = data.get("category") or None
-    category = normalize_category_name(category) if category else None
 
-    ordered_pairs = [
-        pair for pair in pairs_cache
-        if pair_exists(current_folder, pair[0])
-        and (not category or get_pair_category(pair[0]) == category)
-    ]
+    ordered_pairs = [pair for pair in pairs_cache if pair_exists(current_folder, pair[0])]
     if not ordered_pairs:
         return jsonify({"ok": False, "error": "No image/text pairs found."}), 400
 
     temp_records = []
-    renamed_categories = dict(category_assignments)
+    renamed_categories = {}
     try:
         for i, (img_name, _) in enumerate(ordered_pairs):
             img_path = os.path.join(current_folder, img_name)
@@ -8676,10 +6660,7 @@ def rename_all_pairs():
             os.replace(temp_img, final_img)
             if had_txt:
                 os.replace(temp_txt, final_txt)
-            final_name = os.path.basename(final_img)
-            renamed_categories[final_name] = normalize_category_name(category_assignments.get(old_img_name, DEFAULT_CATEGORY))
-            if final_name != old_img_name:
-                renamed_categories.pop(old_img_name, None)
+            renamed_categories[os.path.basename(final_img)] = normalize_category_name(category_assignments.get(old_img_name, DEFAULT_CATEGORY))
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -8687,7 +6668,7 @@ def rename_all_pairs():
     pairs_cache = load_pairs(current_folder)
     category_assignments = renamed_categories
     save_category_assignments(current_folder, category_assignments)
-    message = f"Renamed {len(ordered_pairs)} image/text pair(s)" + (f" in {category}." if category else ".")
+    message = "Renamed all image/text pairs."
     return jsonify({"ok": True})
 
 
@@ -8912,163 +6893,8 @@ def set_category():
     return jsonify({
         "ok": True,
         "category": category,
-        "icon": category_icon_for_name(category),
+        "icon": CATEGORY_NAME_TO_ICON.get(category, CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY]),
     })
-
-
-def unique_category_name(base_name, exclude_name=None):
-    base = re.sub(r"\s+", " ", str(base_name or "")).strip() or "New Category"
-    base = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", base).strip() or "New Category"
-    names = category_names_from_folders()
-    if exclude_name:
-        names.discard(exclude_name)
-    candidate = base
-    counter = 2
-    while candidate in names:
-        candidate = f"{base} {counter}"
-        counter += 1
-    return candidate
-
-
-@app.route("/create_category", methods=["POST"])
-def create_category():
-    global category_folders
-    if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
-
-    data = request.get_json(force=True) or {}
-    index = len(category_folders)
-    name = unique_category_name(data.get("name") or "New Category")
-    icon = str(data.get("icon") or CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY])
-    if icon not in {item["icon"] for item in CATEGORY_DEFS} and not is_valid_category_icon(icon):
-        icon = CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY]
-    color = str(data.get("color") or DEFAULT_CATEGORY_COLORS[index % len(DEFAULT_CATEGORY_COLORS)])
-    folder = normalize_category_folder(
-        {
-            "name": name,
-            "icon": icon,
-            "color": color,
-            "x": data.get("x", (index % 5) * 112),
-            "y": data.get("y", (index // 5) * 120),
-        },
-        index,
-        {item.get("name") for item in category_folders},
-    )
-    category_folders.append(folder)
-    save_category_state(current_folder, category_assignments, category_folders)
-    return jsonify({"ok": True, "category": folder})
-
-
-@app.route("/update_category", methods=["POST"])
-def update_category():
-    global category_folders, category_assignments
-    if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
-
-    data = request.get_json(force=True) or {}
-    old_name = str(data.get("old_name") or "").strip()
-    if not old_name:
-        return jsonify({"ok": False, "error": "Missing category name."}), 400
-
-    target = None
-    for item in category_folders:
-        if item.get("name") == old_name:
-            target = item
-            break
-    if target is None:
-        return jsonify({"ok": False, "error": "Category not found."}), 404
-
-    new_name = unique_category_name(data.get("name") or old_name, exclude_name=old_name)
-    icon = str(data.get("icon") or target.get("icon") or CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY])
-    if icon not in {item["icon"] for item in CATEGORY_DEFS} and not is_valid_category_icon(icon):
-        icon = CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY]
-    color = str(data.get("color") or target.get("color") or "#9ca3af")
-    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
-        color = target.get("color") or "#9ca3af"
-
-    target.update({
-        "name": new_name,
-        "icon": icon,
-        "color": color,
-    })
-    if "x" in data:
-        target["x"] = max(0, int(data.get("x") or 0))
-    if "y" in data:
-        target["y"] = max(0, int(data.get("y") or 0))
-
-    if new_name != old_name:
-        for img_name, value in list(category_assignments.items()):
-            if value == old_name:
-                category_assignments[img_name] = new_name
-
-    save_category_state(current_folder, category_assignments, category_folders)
-    return jsonify({"ok": True, "category": target})
-
-
-@app.route("/delete_category", methods=["POST"])
-def delete_category():
-    global category_folders, category_assignments
-    if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
-
-    data = request.get_json(force=True) or {}
-    name = str(data.get("name") or "").strip()
-    if not name:
-        return jsonify({"ok": False, "error": "Missing category name."}), 400
-    if name == DEFAULT_CATEGORY:
-        return jsonify({"ok": False, "error": "Undefined cannot be deleted."}), 400
-
-    original_len = len(category_folders)
-    category_folders = [item for item in category_folders if item.get("name") != name]
-    if len(category_folders) == original_len:
-        return jsonify({"ok": False, "error": "Category not found."}), 404
-    for img_name, value in list(category_assignments.items()):
-        if value == name:
-            category_assignments[img_name] = DEFAULT_CATEGORY
-    save_category_state(current_folder, category_assignments, category_folders)
-    return jsonify({"ok": True})
-
-
-@app.route("/move_pairs", methods=["POST"])
-def move_pairs():
-    global category_assignments, pairs_cache
-    if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
-
-    data = request.get_json(force=True) or {}
-    img_names = [str(name) for name in data.get("img_names") or [] if isinstance(name, str)]
-    category = normalize_category_name(data.get("category"))
-    mode = str(data.get("mode") or "move").lower()
-    if not img_names:
-        return jsonify({"ok": False, "error": "No images selected."}), 400
-
-    changed = []
-    if mode == "copy":
-        folder_path = Path(current_folder)
-        for img_name in img_names:
-            src_img = folder_path / img_name
-            if not src_img.exists() or src_img.suffix.lower() not in IMAGE_EXTENSIONS:
-                continue
-            target_name = make_unique_image_name(current_folder, src_img.stem, src_img.suffix)
-            target_img = folder_path / target_name
-            shutil.copy2(src_img, target_img)
-            src_txt = src_img.with_suffix(".txt")
-            target_txt = target_img.with_suffix(".txt")
-            if src_txt.exists():
-                shutil.copy2(src_txt, target_txt)
-            else:
-                target_txt.write_text("", encoding="utf-8")
-            category_assignments[target_name] = category
-            changed.append(target_name)
-    else:
-        for img_name in img_names:
-            if pair_exists(current_folder, img_name):
-                category_assignments[img_name] = category
-                changed.append(img_name)
-
-    save_category_assignments(current_folder, category_assignments)
-    pairs_cache = load_pairs(current_folder)
-    return jsonify({"ok": True, "changed": changed, "category": category, "mode": mode})
 
 
 @app.route("/replace_all", methods=["POST"])
@@ -9083,13 +6909,11 @@ def replace_all():
     match_string = request.form.get("match_string", "")
     replace_with = request.form.get("replace_with", "")
     use_regex = request.form.get("use_regex") == "1"
-    category = request.form.get("category") or None
 
     try:
-        count = replace_in_all_captions(current_folder, match_string, replace_with, use_regex=use_regex, category=category)
+        count = replace_in_all_captions(current_folder, match_string, replace_with, use_regex=use_regex)
         pairs_cache = load_pairs(current_folder)
-        scope_text = f" in {normalize_category_name(category)}" if category else ""
-        result_text = f"Replaced {count} occurrence(s){scope_text}."
+        result_text = f"Replaced {count} occurrence(s)."
 
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"ok": True, "message": result_text})
@@ -9114,7 +6938,6 @@ def add_triggerword_all():
         return redirect(url_for("index"))
 
     trigger_word = request.form.get("trigger_word", "")
-    category = request.form.get("category") or None
     if trigger_word is None or trigger_word == "":
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"ok": False, "error": "Missing trigger word."}), 400
@@ -9122,7 +6945,7 @@ def add_triggerword_all():
         return redirect(url_for("index"))
 
     changed = 0
-    for img_name in image_names_for_category(category):
+    for img_name in [f for f in sorted(os.listdir(current_folder)) if f.lower().endswith(IMAGE_EXTENSIONS)]:
         txt_path = os.path.splitext(os.path.join(current_folder, img_name))[0] + '.txt'
         existing = ""
         if os.path.exists(txt_path):
@@ -9136,8 +6959,7 @@ def add_triggerword_all():
         changed += 1
 
     pairs_cache = load_pairs(current_folder)
-    scope_text = f" in {normalize_category_name(category)}" if category else ""
-    result_text = f"Added trigger word to {changed} file(s){scope_text}."
+    result_text = f"Added trigger word to {changed} file(s)."
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({"ok": True, "message": result_text})
@@ -9156,11 +6978,9 @@ def count_string():
         return redirect(url_for("index"))
 
     count_regex = request.form.get("count_string", "")
-    category = request.form.get("category") or None
     try:
-        count = count_in_all_captions(current_folder, count_regex, category=category)
-        scope_text = f" in {normalize_category_name(category)}" if category else ""
-        result_text = f"Found {count} occurrence(s){scope_text}."
+        count = count_in_all_captions(current_folder, count_regex)
+        result_text = f"Found {count} occurrence(s)."
 
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"ok": True, "message": result_text})
@@ -9211,7 +7031,17 @@ def summary():
     summary_text += f"<br><b>Total Images:</b> {len(pairs_cache)}"
     summary_text += f"<br><b>Total Captions:</b> {len(pairs_cache)}"
     total_images = len(pairs_cache)
-    folders = category_folders or default_category_folders()
+    if total_images > 0:
+        portrait_count = sum(category_counts.get(item["name"], 0) for item in CATEGORY_DEFS if item["name"].startswith("Close-up"))
+        kneeup_count = sum(category_counts.get(item["name"], 0) for item in CATEGORY_DEFS if item["name"].startswith("Medium"))
+        fullbody_count = sum(category_counts.get(item["name"], 0) for item in CATEGORY_DEFS if item["name"].startswith("Full body"))
+        category_group_percentages = {
+            "portrait": round((portrait_count / total_images) * 100),
+            "kneeup": round((kneeup_count / total_images) * 100),
+            "fullbody": round((fullbody_count / total_images) * 100),
+        }
+    else:
+        category_group_percentages = {"portrait": 0, "kneeup": 0, "fullbody": 0}
 
     summary_text += "<br><br><b>Categories:</b><br>"
 
@@ -9221,15 +7051,27 @@ def summary():
         pad = 'padding-left:16px; ' if indent else ''
         return f"<span style='{pad}color:{color};'>{label}: {value}</span><br>"
 
-    for category in [item["name"] for item in folders]:
-        summary_text += _cat_line(category, category_counts.get(category, 0), False)
+    summary_text += _cat_line('Close-up', f"{category_group_percentages['portrait']}%")
+    for category in [item["name"] for item in CATEGORY_DEFS if item["name"].startswith("Close-up")]:
+        summary_text += _cat_line(category, category_counts.get(category, 0), True)
+
+    summary_text += _cat_line('Medium', f"{category_group_percentages['kneeup']}%")
+    for category in [item["name"] for item in CATEGORY_DEFS if item["name"].startswith("Medium")]:
+        summary_text += _cat_line(category, category_counts.get(category, 0), True)
+
+    summary_text += _cat_line('Full body', f"{category_group_percentages['fullbody']}%")
+    for category in [item["name"] for item in CATEGORY_DEFS if item["name"].startswith("Full body")]:
+        summary_text += _cat_line(category, category_counts.get(category, 0), True)
+
+    if any(item["name"] == 'Undefined' for item in CATEGORY_DEFS):
+        summary_text += _cat_line('Undefined', category_counts.get('Undefined', 0), False)
 
     aspect_chart = [{"label": label, "count": aspect_ratio_counts.get(label, 0)} for label in predefined_aspects]
     aspect_chart.append({"label": "???", "count": aspect_ratio_counts.get("???", 0)})
 
     category_chart = [
-        {"name": item["name"], "count": category_counts.get(item["name"], 0), "percent": (round((category_counts.get(item["name"], 0) / total_images) * 100) if total_images else 0), "icon": item["icon"], "color": item.get("color", "#9ca3af")}
-        for item in folders
+        {"name": item["name"], "count": category_counts.get(item["name"], 0), "percent": (round((category_counts.get(item["name"], 0) / total_images) * 100) if total_images else 0), "icon": item["icon"]}
+        for item in CATEGORY_DEFS
     ]
 
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in (request.headers.get("Accept") or "")
@@ -9240,7 +7082,8 @@ def summary():
             "total_images": len(pairs_cache),
             "total_captions": len(pairs_cache),
             "html": summary_text,
-            "categories": [{"name": item["name"], "count": category_counts.get(item["name"], 0)} for item in folders],
+            "categories": [{"name": item["name"], "count": category_counts.get(item["name"], 0)} for item in CATEGORY_DEFS],
+            "category_group_percentages": category_group_percentages,
             "aspect_chart": aspect_chart,
             "category_chart": category_chart,
         })
