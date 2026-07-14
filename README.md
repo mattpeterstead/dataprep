@@ -1,5 +1,7 @@
 # DataPrep
 
+![DataPrep Simple mode](docs/dataprep-simple.png)
+
 DataPrep is a local dataset preparation tool for image and video captioning workflows. It runs as a Flask app on `127.0.0.1` and stores captions as `.txt` sidecar files next to the source media.
 
 The app is designed for LoRA/dataset preparation work where files are edited directly in the dataset folder.
@@ -157,7 +159,7 @@ Image modes support:
 - statistics
 - batch rename, save, reset, convert, backup, and refresh actions
 
-When non-PNG images are imported by paste or drag-and-drop, the app can ask whether to convert them to uncompressed PNG.
+Using lossless PNG files is recommended for image preparation. Repeatedly saving images in lossy formats, such as JPEG or lossy WebP/AVIF, can accumulate compression artifacts and reduce image quality further. When non-PNG images are imported by paste or drag-and-drop, the app can convert them to uncompressed PNG.
 
 ### Image Simple
 
@@ -184,6 +186,8 @@ dataset/
 Masking mode supports brush, fill, right-button erase behavior, undo/redo history, mask opacity, automatic mask creation, mask expansion, and feathering.
 
 Automatic masking uses REMBG where available. Model files may be downloaded on first use.
+
+![DataPrep Video mode](docs/dataprep-video.png)
 
 ## Video Workflow
 
@@ -270,3 +274,9 @@ git diff --stat
 ```
 
 Avoid committing generated runtime artifacts such as `.venv`, downloaded models, backups, logs, and caches.
+
+## License
+
+DataPrep is licensed under the [MIT License](LICENSE).
+
+Copyright (c) 2026 mattpeterstead. Third-party libraries, models, and assets remain subject to their respective licenses.
