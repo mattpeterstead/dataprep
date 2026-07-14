@@ -12,7 +12,18 @@ env/
 logs/
 BACKUPS/
 __upload_test/
+__mask_test/
+__mask_js_check.js
+dataprep_icon_reference.png
+dataprep_mask_icon_preview.png
 settings/.dataset_forge_last_app
+settings/.dataset_forge_image_folder_handoff
+
+# Installer-generated launchers
+/start.bat
+/start_video.bat
+/start.sh
+/start_video.sh
 
 # Downloaded model files and external binaries
 models/

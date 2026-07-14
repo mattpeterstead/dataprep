@@ -1,4 +1,8 @@
 @echo off
+if /i not "%~1"=="--inner" (
+  start "DataPrep Installer" cmd /c ""%~f0" --inner"
+  exit /b
+)
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 
@@ -6,7 +10,7 @@ set "LOG_DIR=%CD%\logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 set "LOG=%LOG_DIR%\install_log.txt"
 set "REQ=%CD%\requirements.txt"
-> "%LOG%" echo Dataset Forge Installer
+> "%LOG%" echo DataPrep Installer
 
 echo.
 echo =================================
@@ -18,30 +22,30 @@ echo =================================
 >> "%LOG%" echo =================================
 
 set "PY_CMD="
-py -3.11 -c "import sys; print(sys.version)" >> "%LOG%" 2>&1
-if not errorlevel 1 set "PY_CMD=py -3.11"
-if not defined PY_CMD (
-  py -3.12 -c "import sys; print(sys.version)" >> "%LOG%" 2>&1
-  if not errorlevel 1 set "PY_CMD=py -3.12"
+for %%V in (3.11 3.12 3.13 3.10) do (
+  if not defined PY_CMD (
+    py -%%V --version >> "%LOG%" 2>&1
+    if not errorlevel 1 set "PY_CMD=py -%%V"
+  )
 )
 if not defined PY_CMD (
-  py -3.13 -c "import sys; print(sys.version)" >> "%LOG%" 2>&1
-  if not errorlevel 1 set "PY_CMD=py -3.13"
-)
-if not defined PY_CMD (
-  py -3.10 -c "import sys; print(sys.version)" >> "%LOG%" 2>&1
-  if not errorlevel 1 set "PY_CMD=py -3.10"
-)
-if not defined PY_CMD (
-  py -3 -c "import sys; print(sys.version); raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 13) else 1)" >> "%LOG%" 2>&1
+  py -3 --version >> "%LOG%" 2>&1
   if not errorlevel 1 set "PY_CMD=py -3"
 )
-if not defined PY_CMD (
-  echo [ERROR] Could not find a supported Python via py launcher.
-  echo Install Python 3.11, 3.12, or 3.13 and run this installer again.
-  >> "%LOG%" echo [ERROR] Could not find a supported Python via py launcher.
-  goto :fail
-)
+if not defined PY_CMD goto :no_supported_python
+
+%PY_CMD% -c "import sys; print(sys.version); raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 13) else 1)" >> "%LOG%" 2>&1
+if errorlevel 1 set "PY_CMD="
+if not defined PY_CMD goto :no_supported_python
+goto :python_selected
+
+:no_supported_python
+echo [ERROR] Could not find a supported Python via py launcher.
+echo Install Python 3.11, 3.12, or 3.13 and run this installer again.
+>> "%LOG%" echo [ERROR] Could not find a supported Python via py launcher.
+goto :fail
+
+:python_selected
 
 echo Using: %PY_CMD%
 >> "%LOG%" echo Using: %PY_CMD%
@@ -198,21 +202,25 @@ if not "%STEP_EXIT%"=="0" (
 )
 
 "%PY_EXE%" -c "import torch; print('torch:', torch.__version__); print('torch cuda build:', torch.version.cuda); print('cuda available:', torch.cuda.is_available()); print('cuda device count:', torch.cuda.device_count()); print('cuda device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')" >> "%LOG%" 2>&1
-if errorlevel 1 (
-  echo [ERROR] PyTorch verification failed.
-  >> "%LOG%" echo [ERROR] PyTorch verification failed.
-  goto :fail
-)
+if errorlevel 1 goto :torch_verify_failed
 echo PyTorch verification:
 "%PY_EXE%" -c "import torch; print('  torch:', torch.__version__); print('  cuda build:', torch.version.cuda); print('  cuda available:', torch.cuda.is_available()); print('  cuda device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
-if /i not "%TORCH_BACKEND%"=="cpu" (
-  "%PY_EXE%" -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 1)"
-  if errorlevel 1 (
-    echo [WARNING] A CUDA PyTorch build was installed, but PyTorch cannot access CUDA.
-    echo [WARNING] Check the NVIDIA driver if Qwen3-VL still runs on CPU.
-    >> "%LOG%" echo [WARNING] CUDA build installed but torch.cuda.is_available() is false.
-  )
-)
+if /i "%TORCH_BACKEND%"=="cpu" goto :after_cuda_access_check
+"%PY_EXE%" -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 1)"
+if errorlevel 1 goto :cuda_access_warning
+goto :after_cuda_access_check
+
+:torch_verify_failed
+echo [ERROR] PyTorch verification failed.
+>> "%LOG%" echo [ERROR] PyTorch verification failed.
+goto :fail
+
+:cuda_access_warning
+echo [WARNING] A CUDA PyTorch build was installed, but PyTorch cannot access CUDA.
+echo [WARNING] Check the NVIDIA driver if Qwen3-VL still runs on CPU.
+>> "%LOG%" echo [WARNING] CUDA build installed but torch.cuda.is_available() is false.
+
+:after_cuda_access_check
 
 echo.
 echo =================================
@@ -224,7 +232,7 @@ echo =================================
 >> "%LOG%" echo =================================
 
 echo Downloading and installing Python packages from requirements.txt.
-echo Large packages include transformers, onnxruntime, and model helper libraries.
+echo Large packages include transformers, onnxruntime, rembg, and model helper libraries.
 echo Pip will show download progress, file sizes, and transfer speed below.
 echo Started: %DATE% %TIME%
 >> "%LOG%" echo Started requirements install: %DATE% %TIME%
@@ -236,6 +244,32 @@ if not "%STEP_EXIT%"=="0" (
   echo [ERROR] Failed to install dependencies from requirements.txt.
   >> "%LOG%" echo [ERROR] Failed to install dependencies from requirements.txt.
   goto :fail
+)
+
+echo.
+echo =================================
+echo Installing optional WhisperX video transcription backend
+echo =================================
+>> "%LOG%" echo.
+>> "%LOG%" echo =================================
+>> "%LOG%" echo Installing optional WhisperX video transcription backend
+>> "%LOG%" echo =================================
+
+echo WhisperX is optional and large. If this step fails, the rest of DataPrep can still run.
+echo Started: %DATE% %TIME%
+>> "%LOG%" echo Started optional WhisperX install: %DATE% %TIME%
+"%PY_EXE%" -m pip --log "%LOG%" install --progress-bar on --upgrade-strategy only-if-needed ctranslate2 faster-whisper omegaconf pandas nltk pyannote.audio torchcodec
+if errorlevel 1 (
+  echo [WARNING] WhisperX dependency installation failed.
+  >> "%LOG%" echo [WARNING] WhisperX dependency installation failed.
+)
+"%PY_EXE%" -m pip --log "%LOG%" install --progress-bar on --no-deps git+https://github.com/m-bain/whisperx.git
+set "WHISPERX_EXIT=%ERRORLEVEL%"
+echo Finished: %DATE% %TIME%
+>> "%LOG%" echo Finished optional WhisperX install: %DATE% %TIME% with code %WHISPERX_EXIT%
+if not "%WHISPERX_EXIT%"=="0" (
+  echo [WARNING] WhisperX installation failed. Video WhisperX captions will show an install error until WhisperX is installed.
+  >> "%LOG%" echo [WARNING] WhisperX installation failed; continuing installation.
 )
 
 echo.
@@ -338,12 +372,46 @@ echo =================================
 >> "%LOG%" echo Verifying environment
 >> "%LOG%" echo =================================
 
-"%PY_EXE%" -c "import sys, flask, PIL, requests, huggingface_hub, psutil, numpy, onnxruntime, pillow_avif, transformers, torch, torchvision, accelerate, qwen_vl_utils, safetensors, timm, einops; assert int(transformers.__version__.split('.')[0]) < 5, 'Unsupported transformers version: ' + transformers.__version__; print('python:', sys.version); print('flask:', flask.__version__); print('pillow:', PIL.__version__); print('requests:', requests.__version__); print('hf_hub:', huggingface_hub.__version__); print('psutil:', psutil.__version__); print('numpy:', numpy.__version__); print('onnxruntime:', onnxruntime.__version__); print('pillow_avif: ok'); print('transformers:', transformers.__version__); print('torch:', torch.__version__); print('torch cuda build:', torch.version.cuda); print('torch cuda available:', torch.cuda.is_available()); print('torch cuda device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'); print('torchvision:', torchvision.__version__); print('accelerate:', accelerate.__version__); print('qwen_vl_utils: ok'); print('safetensors:', safetensors.__version__); print('timm:', timm.__version__); print('einops: ok')" >> "%LOG%" 2>&1
+"%PY_EXE%" -c "import sys, flask, PIL, requests, huggingface_hub, psutil, numpy, onnxruntime, pillow_avif, rembg, transformers, torch, torchvision, accelerate, qwen_vl_utils, safetensors, timm, einops, cv2, sentencepiece, google.protobuf; assert int(transformers.__version__.split('.')[0]) < 5, 'Unsupported transformers version: ' + transformers.__version__; print('python:', sys.version); print('flask:', flask.__version__); print('pillow:', PIL.__version__); print('requests:', requests.__version__); print('hf_hub:', huggingface_hub.__version__); print('psutil:', psutil.__version__); print('numpy:', numpy.__version__); print('onnxruntime:', onnxruntime.__version__); print('rembg: ok'); print('opencv:', cv2.__version__); print('pillow_avif: ok'); print('transformers:', transformers.__version__); print('torch:', torch.__version__); print('torch cuda build:', torch.version.cuda); print('torch cuda available:', torch.cuda.is_available()); print('torch cuda device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'); print('torchvision:', torchvision.__version__); print('accelerate:', accelerate.__version__); print('qwen_vl_utils: ok'); print('sentencepiece:', sentencepiece.__version__); print('protobuf:', google.protobuf.__version__); print('safetensors:', safetensors.__version__); print('timm:', timm.__version__); print('einops: ok')" >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [ERROR] Verification failed.
   >> "%LOG%" echo [ERROR] Verification failed.
   goto :fail
 )
+
+echo.
+echo =================================
+echo Writing launchers
+echo =================================
+>> "%LOG%" echo.
+>> "%LOG%" echo =================================
+>> "%LOG%" echo Writing launchers
+>> "%LOG%" echo =================================
+
+set "DATAPREP_INSTALLER_FILE=%~f0"
+set "DATAPREP_INSTALL_ROOT=%CD%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$installer = $env:DATAPREP_INSTALLER_FILE; $root = $env:DATAPREP_INSTALL_ROOT; $source = [IO.File]::ReadAllText($installer); function Write-Launcher([string]$name, [string]$begin, [string]$end) { $pattern = '(?ms)^:: ' + [regex]::Escape($begin) + '\r?\n(.*?)^:: ' + [regex]::Escape($end) + '(?:\r?\n|$)'; $match = [regex]::Match($source, $pattern); if (-not $match.Success) { throw ('Embedded launcher template not found: ' + $name) }; $text = $match.Groups[1].Value -replace '\r?\n', [Environment]::NewLine; [IO.File]::WriteAllText((Join-Path $root $name), $text, [Text.UTF8Encoding]::new($false)) }; Write-Launcher 'start.bat' 'DATAPREP_START_BAT_BEGIN' 'DATAPREP_START_BAT_END'; Write-Launcher 'start_video.bat' 'DATAPREP_START_VIDEO_BAT_BEGIN' 'DATAPREP_START_VIDEO_BAT_END'" >> "%LOG%" 2>&1
+set "LAUNCHER_EXIT=%ERRORLEVEL%"
+set "DATAPREP_INSTALLER_FILE="
+set "DATAPREP_INSTALL_ROOT="
+if not "%LAUNCHER_EXIT%"=="0" (
+  echo [ERROR] Failed to create Windows launchers.
+  >> "%LOG%" echo [ERROR] Failed to create Windows launchers.
+  goto :fail
+)
+
+if not exist "%CD%\start.bat" (
+  echo [ERROR] start.bat was not created.
+  >> "%LOG%" echo [ERROR] start.bat was not created.
+  goto :fail
+)
+if not exist "%CD%\start_video.bat" (
+  echo [ERROR] start_video.bat was not created.
+  >> "%LOG%" echo [ERROR] start_video.bat was not created.
+  goto :fail
+)
+>> "%LOG%" echo Created: %CD%\start.bat
+>> "%LOG%" echo Created: %CD%\start_video.bat
 
 echo.
 echo ==========================================
@@ -352,12 +420,15 @@ echo Environment: %CD%\.venv
 echo Requirements: %REQ%
 echo KoboldCpp: %KOBOLD_EXE%
 echo GGUF defaults: %CD%\settings\joycaption_gguf_defaults.json
+echo Image launcher: %CD%\start.bat
+echo Video launcher: %CD%\start_video.bat
 echo Log: %LOG%
 echo ==========================================
+echo The installer does not download captioning model weights.
 echo The app will download selected JoyCaption and Qwen3-VL models later when first used.
 echo.
-echo Press any key to close this installer.
-pause >nul
+echo Press any key to close this installer window.
+pause
 exit /b 0
 
 :fail
@@ -374,3 +445,203 @@ if exist "%LOG%" (
 )
 pause
 exit /b 1
+
+:: DATAPREP_START_BAT_BEGIN
+@echo off
+setlocal EnableExtensions
+
+set "ROOT=%~dp0"
+set "PYTHON=%ROOT%.venv\Scripts\python.exe"
+set "SETTINGS_DIR=%ROOT%settings"
+set "LAST_FILE=%SETTINGS_DIR%\.dataset_forge_last_app"
+
+pushd "%ROOT%" >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo [ERROR] Could not open application folder:
+  echo %ROOT%
+  echo.
+  pause
+  exit /b 1
+)
+
+if not exist "%SETTINGS_DIR%" mkdir "%SETTINGS_DIR%" >nul 2>&1
+
+set "MODE=simple"
+if exist "%LAST_FILE%" (
+  set /p MODE=<"%LAST_FILE%"
+)
+if /i not "%MODE%"=="image" if /i not "%MODE%"=="simple" set "MODE=simple"
+
+if /i "%MODE%"=="simple" (
+  set "APP=%ROOT%imageprep_simple.py"
+  set "URL=http://127.0.0.1:5000/"
+  set "PORT=5000"
+  set "LABEL=Image Simple"
+) else (
+  set "APP=%ROOT%imageprep.py"
+  set "URL=http://127.0.0.1:5000/"
+  set "PORT=5000"
+  set "LABEL=Image Advanced"
+)
+
+title DataPrep - %LABEL%
+
+if not exist "%PYTHON%" (
+  echo.
+  echo [ERROR] Missing virtual environment:
+  echo %ROOT%.venv
+  echo.
+  echo Run install.bat first.
+  echo.
+  pause
+  exit /b 1
+)
+
+if not exist "%APP%" (
+  echo.
+  echo [ERROR] Missing app file:
+  echo %APP%
+  echo.
+  pause
+  exit /b 1
+)
+
+"%PYTHON%" -B -c "import flask, PIL, requests, psutil, numpy, huggingface_hub, onnxruntime, pillow_avif, transformers, torch, torchvision, accelerate, qwen_vl_utils, safetensors, timm, einops, cv2, sentencepiece, google.protobuf" >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo [ERROR] Required Python packages are missing from:
+  echo %ROOT%.venv
+  echo.
+  echo Run install.bat and allow it to recreate the virtual environment.
+  echo.
+  pause
+  exit /b 1
+)
+
+>"%LAST_FILE%" echo %MODE%
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "if (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue) { exit 0 } exit 1" >nul 2>&1
+if "%ERRORLEVEL%"=="0" (
+  echo.
+  echo DataPrep %LABEL% already appears to be running.
+  echo Opening %URL%
+  echo.
+  start "" "%URL%"
+  popd >nul
+  exit /b 0
+)
+
+echo.
+echo Starting DataPrep %LABEL%...
+echo URL: %URL%
+echo.
+
+start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 2; Start-Process '%URL%'"
+"%PYTHON%" "%APP%"
+set "EXITCODE=%ERRORLEVEL%"
+
+if "%EXITCODE%"=="0" (
+  popd >nul
+  exit /b 0
+)
+
+echo.
+echo DataPrep %LABEL% exited with error code %EXITCODE%.
+echo.
+pause
+
+popd >nul
+exit /b %EXITCODE%
+:: DATAPREP_START_BAT_END
+:: DATAPREP_START_VIDEO_BAT_BEGIN
+@echo off
+setlocal EnableExtensions
+
+set "ROOT=%~dp0"
+set "PYTHON=%ROOT%.venv\Scripts\python.exe"
+set "APP=%ROOT%videoprep.py"
+set "URL=http://127.0.0.1:5002/"
+set "PORT=5002"
+set "LABEL=Video"
+
+pushd "%ROOT%" >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo [ERROR] Could not open application folder:
+  echo %ROOT%
+  echo.
+  pause
+  exit /b 1
+)
+
+title DataPrep - %LABEL%
+
+if not exist "%PYTHON%" (
+  echo.
+  echo [ERROR] Missing virtual environment:
+  echo %ROOT%.venv
+  echo.
+  echo Run install.bat first.
+  echo.
+  pause
+  popd >nul
+  exit /b 1
+)
+
+if not exist "%APP%" (
+  echo.
+  echo [ERROR] Missing app file:
+  echo %APP%
+  echo.
+  pause
+  popd >nul
+  exit /b 1
+)
+
+"%PYTHON%" -B -c "import flask, PIL, requests, psutil, numpy, huggingface_hub, onnxruntime, pillow_avif, transformers, torch, torchvision, accelerate, qwen_vl_utils, safetensors, timm, einops, cv2, sentencepiece, google.protobuf" >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo [ERROR] Required Python packages are missing from:
+  echo %ROOT%.venv
+  echo.
+  echo Run install.bat and allow it to recreate the virtual environment.
+  echo.
+  pause
+  popd >nul
+  exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "if (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue) { exit 0 } exit 1" >nul 2>&1
+if "%ERRORLEVEL%"=="0" (
+  echo.
+  echo DataPrep %LABEL% already appears to be running.
+  echo Opening %URL%
+  echo.
+  start "" "%URL%"
+  popd >nul
+  exit /b 0
+)
+
+echo.
+echo Starting DataPrep %LABEL%...
+echo URL: %URL%
+echo.
+
+start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 2; Start-Process '%URL%'"
+"%PYTHON%" "%APP%"
+set "EXITCODE=%ERRORLEVEL%"
+
+if "%EXITCODE%"=="0" (
+  popd >nul
+  exit /b 0
+)
+
+echo.
+echo DataPrep %LABEL% exited with error code %EXITCODE%.
+echo.
+pause
+
+popd >nul
+exit /b %EXITCODE%
+:: DATAPREP_START_VIDEO_BAT_END

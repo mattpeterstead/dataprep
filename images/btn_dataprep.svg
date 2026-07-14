@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="DataPrep">
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="#2563eb"/>
+  <rect x="7" y="8" width="14" height="3" rx="1.5" fill="#ffffff"/>
+  <rect x="7" y="14.5" width="11" height="3" rx="1.5" fill="#ffffff"/>
+  <rect x="7" y="21" width="8" height="3" rx="1.5" fill="#ffffff"/>
+  <path d="M19 20.5l2.5 2.5 5-6" fill="none" stroke="#86efac" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
