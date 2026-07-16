@@ -65,6 +65,13 @@ CATEGORY_DEFS = [
 ]
 CATEGORY_NAME_TO_ICON = {item["name"]: item["icon"] for item in CATEGORY_DEFS}
 DEFAULT_CATEGORY = "Undefined"
+DEFAULT_CATEGORY_GROUP_ID = "uncategorized"
+DEFAULT_CATEGORY_GROUPS = [
+    {"id": "close-up", "name": "Close-up", "color": "#22c55e"},
+    {"id": "medium", "name": "Medium", "color": "#eab308"},
+    {"id": "full-body", "name": "Full body", "color": "#ef4444"},
+    {"id": DEFAULT_CATEGORY_GROUP_ID, "name": "Uncategorized", "color": "#9ca3af"},
+]
 DEFAULT_CATEGORY_COLORS = [
     "#22c55e", "#16a34a", "#15803d", "#34d399",
     "#10b981", "#0f766e", "#14b8a6", "#06b6d4",
@@ -292,6 +299,7 @@ folder_name = ""
 selected_crop_base = 1024
 category_assignments = {}
 category_folders = []
+category_groups = []
 
 JOY_MODAL_OPEN_KEY = "caption_app_joy_modal_open"
 JOY_GGUF_DEFAULTS_PATH = SETTINGS_DIR / "joycaption_gguf_defaults.json"
@@ -354,6 +362,7 @@ folder_name = ""
 selected_crop_base = 1024
 category_assignments = {}
 category_folders = []
+category_groups = []
 joycaption_status = {
     "running": False,
     "status": "Idle",
@@ -1387,6 +1396,10 @@ def external_api_generation_settings(options):
                 "Use it for the main visible subject when appropriate inside existing description fields only, "
                 "without adding extra JSON keys."
             )
+    else:
+        external_name = " ".join(str(options.get("external_api_name") or "").split())
+        if external_name:
+            system_prompt = system_prompt.replace("[name]", external_name)
     temperature = float(options.get("external_api_temperature") or 0.2)
     max_tokens = max(1, int(float(options.get("external_api_max_tokens") or 256)))
     return api_url, model_id, api_key, system_prompt, temperature, max_tokens
@@ -1694,6 +1707,9 @@ def caption_image_with_external_api(image_path, options):
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if options.get("external_api_disable_thinking", True):
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+        payload["reasoning_budget"] = 0
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
     r = requests.post(api_url, json=payload, headers=headers, timeout=600)
@@ -1715,7 +1731,13 @@ def caption_image_with_external_api(image_path, options):
             if isinstance(x, dict)
         )
 
-    return str(content).strip()
+    content = str(content).strip()
+    if not content:
+        raise RuntimeError(
+            "External API returned an empty caption. Disable thinking/reasoning "
+            "or increase Max tokens, then try again."
+        )
+    return content
 
 
 def run_qwen3_vl_captioning(folder, options):
@@ -2147,14 +2169,80 @@ def get_category_meta_path(folder):
     return Path(folder) / CATEGORY_META_FILENAME
 
 
-def default_category_folders():
+def default_category_groups():
+    return [dict(item) for item in DEFAULT_CATEGORY_GROUPS]
+
+
+def normalize_category_group_id(value):
+    value = re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-")
+    return value[:80]
+
+
+def normalize_category_groups(raw_groups):
+    source = raw_groups if isinstance(raw_groups, list) else default_category_groups()
+    groups = []
+    existing_ids = set()
+    existing_names = set()
+    for index, raw in enumerate(source):
+        item = raw if isinstance(raw, dict) else {}
+        fallback = DEFAULT_CATEGORY_GROUPS[index] if index < len(DEFAULT_CATEGORY_GROUPS) else {}
+        name = re.sub(r"\s+", " ", str(item.get("name") or fallback.get("name") or f"Group {index + 1}")).strip()
+        if not name:
+            name = f"Group {index + 1}"
+        base_name = name
+        counter = 2
+        while name.casefold() in existing_names:
+            name = f"{base_name} {counter}"
+            counter += 1
+        existing_names.add(name.casefold())
+        group_id = normalize_category_group_id(item.get("id") or fallback.get("id") or name)
+        if not group_id:
+            group_id = f"group-{index + 1}"
+        base_id = group_id
+        counter = 2
+        while group_id in existing_ids:
+            group_id = f"{base_id}-{counter}"
+            counter += 1
+        existing_ids.add(group_id)
+        color = str(item.get("color") or fallback.get("color") or DEFAULT_CATEGORY_COLORS[index % len(DEFAULT_CATEGORY_COLORS)])
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+            color = DEFAULT_CATEGORY_COLORS[index % len(DEFAULT_CATEGORY_COLORS)]
+        groups.append({"id": group_id, "name": name, "color": color})
+
+    if not any(item["id"] == DEFAULT_CATEGORY_GROUP_ID for item in groups):
+        groups.append(dict(DEFAULT_CATEGORY_GROUPS[-1]))
+    return groups
+
+
+def infer_category_group_id(name, groups=None):
+    name = str(name or "").strip().casefold()
+    candidate = DEFAULT_CATEGORY_GROUP_ID
+    if name.startswith("close-up"):
+        candidate = "close-up"
+    elif name.startswith("medium"):
+        candidate = "medium"
+    elif name.startswith("full body") or name.startswith("fullbody"):
+        candidate = "full-body"
+    valid_ids = {item.get("id") for item in (groups or category_groups or default_category_groups())}
+    return candidate if candidate in valid_ids else DEFAULT_CATEGORY_GROUP_ID
+
+
+def category_group_for_id(group_id, groups=None):
+    source = groups if groups is not None else category_groups
+    return next((item for item in source if item.get("id") == group_id), None)
+
+
+def default_category_folders(groups=None):
+    groups = groups or default_category_groups()
     folders = []
     columns = 5
     for i, item in enumerate(CATEGORY_DEFS):
         folders.append({
+            "id": f"folder-{hashlib.sha1(item['name'].encode('utf-8')).hexdigest()[:12]}",
             "name": item["name"],
             "icon": item["icon"],
             "color": DEFAULT_CATEGORY_COLORS[i % len(DEFAULT_CATEGORY_COLORS)],
+            "group_id": infer_category_group_id(item["name"], groups),
             "x": (i % columns) * 112,
             "y": (i // columns) * 120,
         })
@@ -2204,13 +2292,19 @@ def normalize_category_name(name, folders=None):
     }
     if name in legacy_map:
         name = legacy_map[name]
+    source = folders if folders is not None else category_folders
+    item = next((entry for entry in source if entry.get("id") == name or entry.get("name") == name), None)
+    if item:
+        return item.get("name")
     if name in category_names_from_folders(folders):
         return name
     return DEFAULT_CATEGORY
 
 
-def normalize_category_folder(item, index, existing_names):
+def normalize_category_folder(item, index, existing_names, existing_ids=None, groups=None):
     source = item if isinstance(item, dict) else {}
+    existing_ids = existing_ids if existing_ids is not None else set()
+    groups = groups or category_groups or default_category_groups()
     fallback = CATEGORY_DEFS[index]["name"] if index < len(CATEGORY_DEFS) else f"Category {index + 1}"
     raw_name = str(source.get("name") or fallback).strip() or fallback
     name = raw_name
@@ -2219,6 +2313,15 @@ def normalize_category_folder(item, index, existing_names):
         name = f"{raw_name} {counter}"
         counter += 1
     existing_names.add(name)
+    folder_id = normalize_category_group_id(source.get("id"))
+    if not folder_id:
+        folder_id = f"folder-{hashlib.sha1(name.encode('utf-8')).hexdigest()[:12]}"
+    base_id = folder_id
+    counter = 2
+    while folder_id in existing_ids:
+        folder_id = f"{base_id}-{counter}"
+        counter += 1
+    existing_ids.add(folder_id)
     icon = str(source.get("icon") or CATEGORY_NAME_TO_ICON.get(name) or CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY])
     known_icons = {entry["icon"] for entry in CATEGORY_DEFS}
     if icon not in known_icons and not is_valid_category_icon(icon):
@@ -2232,71 +2335,101 @@ def normalize_category_folder(item, index, existing_names):
     except Exception:
         x = (index % 5) * 112
         y = (index // 5) * 120
+    group_id = normalize_category_group_id(source.get("group_id"))
+    if not category_group_for_id(group_id, groups):
+        group_id = infer_category_group_id(name, groups)
     return {
+        "id": folder_id,
         "name": name,
         "icon": icon,
         "color": color,
+        "group_id": group_id,
         "x": max(0, x),
         "y": max(0, y),
     }
 
 
-def normalize_category_folders(raw_folders):
-    source = raw_folders if isinstance(raw_folders, list) else default_category_folders()
+def normalize_category_folders(raw_folders, groups=None):
+    groups = groups or category_groups or default_category_groups()
+    source = raw_folders if isinstance(raw_folders, list) else default_category_folders(groups)
     folders = []
     existing_names = set()
+    existing_ids = set()
     for i, item in enumerate(source):
-        folder = normalize_category_folder(item, i, existing_names)
+        folder = normalize_category_folder(item, i, existing_names, existing_ids, groups)
         folders.append(folder)
     if not any(item.get("name") == DEFAULT_CATEGORY for item in folders):
         undefined = normalize_category_folder(
             {"name": DEFAULT_CATEGORY, "icon": CATEGORY_NAME_TO_ICON[DEFAULT_CATEGORY], "color": "#9ca3af"},
             len(folders),
             existing_names,
+            existing_ids,
+            groups,
         )
         folders.append(undefined)
     return folders
 
 
 def load_category_state(folder):
+    groups = default_category_groups()
     if not folder:
-        return {}, default_category_folders()
+        return {}, default_category_folders(groups), groups
     path = get_category_meta_path(folder)
     if not path.exists():
-        return {}, default_category_folders()
+        return {}, default_category_folders(groups), groups
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {}, default_category_folders()
+        return {}, default_category_folders(groups), groups
     if not isinstance(raw, dict):
-        return {}, default_category_folders()
+        return {}, default_category_folders(groups), groups
     has_new_schema = isinstance(raw.get("assignments"), dict) or isinstance(raw.get("folders"), list)
-    folders = normalize_category_folders(raw.get("folders") if has_new_schema else None)
+    groups = normalize_category_groups(raw.get("groups") if isinstance(raw.get("groups"), list) else None)
+    folders = normalize_category_folders(raw.get("folders") if has_new_schema else None, groups)
     raw_assignments = raw.get("assignments") if has_new_schema else raw
     if not isinstance(raw_assignments, dict):
         raw_assignments = {}
     out = {}
     for key, value in raw_assignments.items():
         if isinstance(key, str):
-            out[key] = normalize_category_name(value, folders)
-    return out, folders
+            out[key] = category_id_for_value(value, folders)
+    if raw.get("version") != 3:
+        save_category_state(folder, out, folders, groups)
+    return out, folders, groups
 
 
 def load_category_assignments(folder):
     return load_category_state(folder)[0]
 
 
-def save_category_state(folder, assignments, folders):
+def category_folder_for_value(value, folders=None):
+    source = folders if folders is not None else category_folders
+    value = str(value or "")
+    return next((item for item in source if item.get("id") == value or item.get("name") == value), None)
+
+
+def category_id_for_value(value, folders=None):
+    source = folders if folders is not None else category_folders
+    item = category_folder_for_value(value, source)
+    if item:
+        return item.get("id")
+    fallback = category_folder_for_value(DEFAULT_CATEGORY, source)
+    return fallback.get("id") if fallback else DEFAULT_CATEGORY
+
+
+def save_category_state(folder, assignments, folders, groups=None):
     if not folder:
         return
     path = get_category_meta_path(folder)
-    clean_folders = normalize_category_folders(folders)
+    clean_groups = normalize_category_groups(groups if groups is not None else category_groups)
+    clean_folders = normalize_category_folders(folders, clean_groups)
     clean = {}
     for key, value in sorted(assignments.items()):
         if isinstance(key, str):
-            clean[key] = normalize_category_name(value, clean_folders)
+            clean[key] = category_id_for_value(value, clean_folders)
     payload = {
-        "version": 2,
+        "version": 3,
+        "groups": clean_groups,
         "folders": clean_folders,
         "assignments": clean,
     }
@@ -2308,7 +2441,12 @@ def save_category_assignments(folder, assignments):
 
 
 def get_pair_category(img_name):
-    return normalize_category_name(category_assignments.get(img_name, DEFAULT_CATEGORY))
+    item = category_folder_for_value(category_assignments.get(img_name, DEFAULT_CATEGORY))
+    return item.get("name") if item else DEFAULT_CATEGORY
+
+
+def get_pair_category_id(img_name):
+    return category_id_for_value(category_assignments.get(img_name, DEFAULT_CATEGORY))
 
 
 def ensure_missing_txt(folder):
@@ -2541,7 +2679,7 @@ TEMPLATE = r'''
 <html>
 <head>
 <meta charset="UTF-8">
-<title>DataPrep</title>
+<title>DataPrep - Workspace mode</title>
 <link rel="icon" href="/category_icon/btn_dataprep.svg" type="image/svg+xml">
 <style>
 body { font-family: Inter, Segoe UI, Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.4; margin: 12px; background: var(--bg); color: var(--fg); }
@@ -5546,7 +5684,7 @@ body {
 <div class="drop-paste-overlay" id="dropPasteOverlay">Drop images to add them</div>
 <div class="top">
   <div class="mode-stack">
-    <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_dataprep.svg" alt=""><div class="mode-label">DataPrep - Advanced</div></div>
+    <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_dataprep.svg" alt=""><div class="mode-label">DataPrep - Workspace mode</div></div>
   </div>
   <div class="row" style="margin-bottom:8px;">
     <details class="top-menu">
@@ -5579,8 +5717,8 @@ body {
     <details class="top-menu">
       <summary>Mode</summary>
       <div class="top-menu-popover">
-        <form method="POST" action="/switch/simple"><button type="submit" title="Switch to Simple Image Prep"><span class="toolbar-btn-content">Simple</span></button></form>
-        <button type="button" disabled aria-current="page"><span class="toolbar-btn-content">Advanced</span></button>
+        <form method="POST" action="/switch/simple"><button type="submit" title="Switch to Default mode"><span class="toolbar-btn-content">Default mode</span></button></form>
+        <button type="button" disabled aria-current="page"><span class="toolbar-btn-content">Workspace mode</span></button>
       </div>
     </details>
     <details class="top-menu">
@@ -5631,6 +5769,7 @@ body {
     {% for category in category_folders %}
       <div class="desktop-folder"
            data-category="{{ category.name }}"
+           data-group-id="{{ category.group_id }}"
            data-icon="{{ category.icon }}"
            data-color="{{ category.color }}"
            style="left:{{ category.x }}px; top:{{ category.y }}px; --folder-color: {{ category.color }};">
@@ -5770,6 +5909,8 @@ body {
 
 <div class="desktop-context-menu" id="desktopContextMenu" role="menu">
   <button type="button" data-action="new-folder">New Folder</button>
+  <button type="button" data-action="new-category-group">New Category Group</button>
+  <button type="button" data-action="manage-category-groups">Manage Category Groups</button>
 </div>
 <div class="desktop-context-menu" id="folderContextMenu" role="menu">
   <button type="button" data-action="edit-folder">Edit Folder</button>
@@ -5794,6 +5935,14 @@ body {
       <input type="color" id="categoryColorInput" value="#9ca3af">
     </label>
     <label>
+      Category group
+      <select id="categoryGroupInput">
+        {% for group in category_groups %}
+          <option value="{{ group.id }}">{{ group.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
       Icon
       <select id="categoryIconInput">
         {% for category in icon_options %}
@@ -5805,6 +5954,34 @@ body {
     </label>
     <div class="category-dialog-actions">
       <button type="button" id="cancelCategoryDialogBtn">Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<div class="category-dialog-backdrop" id="categoryGroupDialogBackdrop">
+  <form class="category-dialog" id="categoryGroupDialog">
+    <h3>Category groups</h3>
+    <label>
+      Group
+      <select id="categoryGroupManageSelect">
+        <option value="__new__">New category group</option>
+        {% for group in category_groups %}
+          <option value="{{ group.id }}">{{ group.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Name
+      <input type="text" id="categoryGroupNameInput" required>
+    </label>
+    <label>
+      Color
+      <input type="color" id="categoryGroupColorInput" value="#9ca3af">
+    </label>
+    <div class="category-dialog-actions">
+      <button type="button" id="deleteCategoryGroupBtn">Delete</button>
+      <button type="button" id="cancelCategoryGroupDialogBtn">Cancel</button>
       <button type="submit">Save</button>
     </div>
   </form>
@@ -6050,6 +6227,13 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
           <input type="text" id="joy_external_api_model" placeholder="Any model ID accepted by the server">
         </label>
         <label>
+          <span class="qwen-name-title">
+            Name
+            <span class="regex-help-icon" role="img" aria-label="External API name help" data-tooltip="Replaces every [name] placeholder in the External API system prompt before captioning. Use a character name or LoRA training trigger. If left empty, [name] is left unchanged.">?</span>
+          </span>
+          <input type="text" id="joy_external_api_name" placeholder="Enter character name or trigger word">
+        </label>
+        <label>
           API key
           <input type="password" id="joy_external_api_key" placeholder="Optional" autocomplete="off">
         </label>
@@ -6061,16 +6245,24 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
           Max tokens
           <input type="number" id="joy_external_api_max_tokens" min="1" step="1" value="256">
         </label>
+        <label>
+          <span>Disable thinking/reasoning</span>
+          <input type="checkbox" id="joy_external_api_disable_thinking" checked>
+        </label>
       </div>
       <label style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
         System prompt
         <textarea id="joy_external_api_system_prompt" rows="8">Create a natural-language image caption for LoRA training.
 
-Write exactly one concise sentence. Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.
 
-Write in natural language, not as comma-separated tags. Do not invent details. Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
 
-Keep the caption short and direct. Output only the caption.</textarea>
+Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.
+
+Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+
+Keep the caption short and direct, usually 12-30 words. Output only the caption.</textarea>
       </label>
     </div>
 
@@ -6263,8 +6455,8 @@ Keep the caption short and direct. Output only the caption.</textarea>
       <h4>Getting started</h4>
       <p>Select <b>File &gt; Open Folder</b> to open an image dataset. Missing caption files are created beside their images.</p>
 
-      <h4>Desktop and categories</h4>
-      <p>Double-click a category icon to open its image window. Drag icons to arrange the desktop. Right-click the desktop or an icon to create, edit, or delete categories.</p>
+      <h4>Folders and categories</h4>
+      <p>Double-click a category icon to open its image window. Drag icons to arrange the Folders view. Right-click the Folders area or an icon to create, edit, or delete folders and category groups. Assign each folder to a category group in Edit Folder.</p>
       <p>Dropping or adding images places them in the active category. Open category windows remain available through the tabs.</p>
 
       <h4>Selecting and moving cards</h4>
@@ -6285,7 +6477,7 @@ Keep the caption short and direct. Output only the caption.</textarea>
       <p><b>Tools &gt; Auto-caption</b> generates captions, <b>Edit &gt; Text tools</b> performs batch text changes, and <b>Tools &gt; JSON captions</b> opens the Ideogram JSON editor.</p>
 
       <h4>Application mode</h4>
-      <p>Use the <b>Mode</b> menu to switch between the Simple and Advanced image workflows while keeping the current folder open.</p>
+      <p>Use the <b>Mode</b> menu to switch between the Default and Workspace image workflows while keeping the current folder open.</p>
     </div>
   </div>
 </div>
@@ -6308,6 +6500,7 @@ Keep the caption short and direct. Output only the caption.</textarea>
 <script id="bucket-data" type="application/json">{{ bucket_options_json|safe }}</script>
 <script id="joy-model-data" type="application/json">{{ joy_model_data_json|safe }}</script>
 <script id="category-defs-data" type="application/json">{{ category_defs_json|safe }}</script>
+<script id="category-groups-data" type="application/json">{{ category_groups|tojson }}</script>
 <script>
 const BUCKET_OPTIONS = JSON.parse(document.getElementById('bucket-data').textContent);
 const topMenus = Array.from(document.querySelectorAll('.top-menu'));
@@ -6345,6 +6538,7 @@ document.addEventListener('keydown', event => {
 });
 const JOY_MODEL_OPTIONS = JSON.parse(document.getElementById('joy-model-data').textContent);
 const CATEGORY_DEFS = JSON.parse(document.getElementById('category-defs-data').textContent);
+const CATEGORY_GROUPS = JSON.parse(document.getElementById('category-groups-data').textContent);
 const CATEGORY_ICON_BY_NAME = Object.fromEntries(CATEGORY_DEFS.map(item => [item.name, item.icon]));
 const CATEGORY_VISIBILITY_KEY = 'caption_app_categories_visible';
 const HAS_OPEN_FOLDER = {{ 'true' if folder_name else 'false' }};
@@ -6379,8 +6573,15 @@ const categoryDialog = document.getElementById('categoryDialog');
 const categoryOldName = document.getElementById('categoryOldName');
 const categoryNameInput = document.getElementById('categoryNameInput');
 const categoryColorInput = document.getElementById('categoryColorInput');
+const categoryGroupInput = document.getElementById('categoryGroupInput');
 const categoryIconInput = document.getElementById('categoryIconInput');
 const categoryIconFileInput = document.getElementById('categoryIconFileInput');
+const categoryGroupDialogBackdrop = document.getElementById('categoryGroupDialogBackdrop');
+const categoryGroupDialog = document.getElementById('categoryGroupDialog');
+const categoryGroupManageSelect = document.getElementById('categoryGroupManageSelect');
+const categoryGroupNameInput = document.getElementById('categoryGroupNameInput');
+const categoryGroupColorInput = document.getElementById('categoryGroupColorInput');
+const deleteCategoryGroupBtn = document.getElementById('deleteCategoryGroupBtn');
 const desktopContextMenu = document.getElementById('desktopContextMenu');
 const folderContextMenu = document.getElementById('folderContextMenu');
 const cardContextMenu = document.getElementById('cardContextMenu');
@@ -6743,7 +6944,7 @@ function renderStatusbarTabs() {
   desktopTab.role = 'button';
   desktopTab.tabIndex = 0;
   desktopTab.className = 'category-taskbar-tab desktop-tab';
-  desktopTab.title = 'Desktop';
+  desktopTab.title = 'Folders';
   desktopTab.classList.toggle('active', !wins.some(win => win.dataset.minimized !== '1' && !win.hidden));
   desktopTab.addEventListener('click', minimizeAllCategoryWindows);
   desktopTab.addEventListener('keydown', (event) => {
@@ -6754,7 +6955,7 @@ function renderStatusbarTabs() {
   });
   const desktopLabel = document.createElement('span');
   desktopLabel.className = 'category-taskbar-tab-label';
-  desktopLabel.textContent = 'Desktop';
+  desktopLabel.textContent = 'Folders';
   desktopTab.append(desktopLabel);
   statusbarTabs.append(desktopTab);
   wins.forEach(win => {
@@ -7544,6 +7745,7 @@ function openCategoryDialog(name = '', position = null) {
   categoryOldName.value = category?.name || '';
   categoryNameInput.value = category?.name || 'New Category';
   categoryColorInput.value = category?.color || '#9ca3af';
+  if (categoryGroupInput) categoryGroupInput.value = category?.group_id || 'uncategorized';
   const iconValue = category?.icon || 'undefined.png';
   if (categoryIconInput && !Array.from(categoryIconInput.options).some(option => option.value === iconValue)) {
     const option = document.createElement('option');
@@ -7564,6 +7766,35 @@ function closeCategoryDialog() {
   pendingNewFolderPosition = null;
 }
 
+function selectedCategoryGroupData() {
+  const id = categoryGroupManageSelect?.value || '__new__';
+  return CATEGORY_GROUPS.find(item => item.id === id) || null;
+}
+
+function syncCategoryGroupDialog() {
+  const group = selectedCategoryGroupData();
+  if (categoryGroupNameInput) categoryGroupNameInput.value = group?.name || 'New Group';
+  if (categoryGroupColorInput) categoryGroupColorInput.value = group?.color || '#9ca3af';
+  if (deleteCategoryGroupBtn) {
+    deleteCategoryGroupBtn.disabled = !group || group.id === 'uncategorized';
+    deleteCategoryGroupBtn.style.display = group ? '' : 'none';
+  }
+}
+
+function openCategoryGroupDialog(createNew = false) {
+  if (categoryGroupManageSelect) {
+    categoryGroupManageSelect.value = createNew ? '__new__' : (CATEGORY_GROUPS[0]?.id || '__new__');
+  }
+  syncCategoryGroupDialog();
+  categoryGroupDialogBackdrop?.classList.add('open');
+  categoryGroupNameInput?.focus();
+  categoryGroupNameInput?.select();
+}
+
+function closeCategoryGroupDialog() {
+  categoryGroupDialogBackdrop?.classList.remove('open');
+}
+
 function initializeCategoryDesktop() {
   distributePairCardsToWindows();
   initializeDesktopFolders();
@@ -7581,6 +7812,14 @@ desktopContextMenu?.addEventListener('click', (event) => {
     const position = pendingNewFolderPosition;
     hideDesktopMenus();
     openCategoryDialog('', position);
+  }
+  if (action === 'new-category-group') {
+    hideDesktopMenus();
+    openCategoryGroupDialog(true);
+  }
+  if (action === 'manage-category-groups') {
+    hideDesktopMenus();
+    openCategoryGroupDialog(false);
   }
 });
 folderContextMenu?.addEventListener('click', async (event) => {
@@ -7608,9 +7847,56 @@ document.addEventListener('click', (event) => {
   if (!event.target.closest('.pair-card')) clearPairSelection();
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') hideDesktopMenus();
+  if (event.key === 'Escape') {
+    hideDesktopMenus();
+    closeCategoryGroupDialog();
+  }
 });
 document.getElementById('cancelCategoryDialogBtn')?.addEventListener('click', closeCategoryDialog);
+document.getElementById('cancelCategoryGroupDialogBtn')?.addEventListener('click', closeCategoryGroupDialog);
+categoryGroupManageSelect?.addEventListener('change', syncCategoryGroupDialog);
+categoryGroupDialog?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const group = selectedCategoryGroupData();
+  const payload = {
+    id: group?.id || '',
+    name: categoryGroupNameInput?.value || '',
+    color: categoryGroupColorInput?.value || '#9ca3af',
+  };
+  const res = await fetch(group ? '/update_category_group' : '/create_category_group', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    await appAlert(data.error || 'Saving category group failed.');
+    return;
+  }
+  suppressBeforeUnload = true;
+  window.location.reload();
+});
+deleteCategoryGroupBtn?.addEventListener('click', async () => {
+  const group = selectedCategoryGroupData();
+  if (!group || group.id === 'uncategorized') return;
+  const confirmed = await appConfirm(
+    `Delete category group "${group.name}"? Its folders will be moved to Uncategorized.`,
+    'Delete category group',
+  );
+  if (!confirmed) return;
+  const res = await fetch('/delete_category_group', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: group.id }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    await appAlert(data.error || 'Deleting category group failed.');
+    return;
+  }
+  suppressBeforeUnload = true;
+  window.location.reload();
+});
 categoryDialog?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const oldName = categoryOldName.value;
@@ -7618,6 +7904,7 @@ categoryDialog?.addEventListener('submit', async (event) => {
     old_name: oldName,
     name: categoryNameInput.value,
     color: categoryColorInput.value,
+    group_id: categoryGroupInput?.value || 'uncategorized',
     icon: categoryIconInput.value,
   };
   if (!oldName && pendingNewFolderPosition) {
@@ -10828,16 +11115,22 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
   qwen3vl_max_image_side: '512',
   external_api_url: '',
   external_api_model: '',
+  external_api_name: '',
   external_api_key: '',
   external_api_temperature: '0.2',
   external_api_max_tokens: '256',
+  external_api_disable_thinking: true,
   external_api_system_prompt: `Create a natural-language image caption for LoRA training.
 
-Write exactly one concise sentence. Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.
 
-Write in natural language, not as comma-separated tags. Do not invent details. Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
 
-Keep the caption short and direct. Output only the caption.`,
+Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.
+
+Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+
+Keep the caption short and direct, usually 12-30 words. Output only the caption.`,
   auto_scroll: true,
 };
 
@@ -10864,6 +11157,8 @@ function updateCaptionBackendUI() {
   if (qwenName) qwenName.disabled = ideogramJson;
   const externalPrompt = document.getElementById('joy_external_api_system_prompt');
   if (externalPrompt) externalPrompt.disabled = ideogramJson;
+  const externalName = document.getElementById('joy_external_api_name');
+  if (externalName) externalName.disabled = ideogramJson;
   const backend = backendSelect?.value || 'joycaption';
   document.querySelectorAll('.joy-only').forEach(el => {
     el.style.display = backend === 'joycaption' ? '' : 'none';
@@ -10928,9 +11223,11 @@ function joySettings() {
     qwen3vl_max_image_side: document.getElementById('joy_qwen3vl_max_image_side').value,
     external_api_url: document.getElementById('joy_external_api_url').value,
     external_api_model: document.getElementById('joy_external_api_model').value,
+    external_api_name: document.getElementById('joy_external_api_name').value,
     external_api_key: document.getElementById('joy_external_api_key').value,
     external_api_temperature: document.getElementById('joy_external_api_temperature').value,
     external_api_max_tokens: document.getElementById('joy_external_api_max_tokens').value,
+    external_api_disable_thinking: document.getElementById('joy_external_api_disable_thinking').checked,
     external_api_system_prompt: document.getElementById('joy_external_api_system_prompt').value,
   };
 }
@@ -10954,6 +11251,7 @@ function loadJoySettings() {
       };
       merged.external_api_url = merged.qwen3vl_base_url;
       merged.external_api_model = legacyModels[merged.qwen3vl_model] || merged.qwen3vl_model || '';
+      merged.external_api_name = merged.qwen3vl_name || '';
       merged.external_api_temperature = merged.qwen3vl_temperature;
       merged.external_api_max_tokens = merged.qwen3vl_max_tokens;
       merged.external_api_system_prompt = merged.qwen3vl_system_prompt;
@@ -10974,6 +11272,16 @@ function loadJoySettings() {
     if (legacyQwenPrompts.includes(String(merged.qwen3vl_system_prompt ?? '').trim())) {
       merged.qwen3vl_system_prompt = JOY_DEFAULTS.qwen3vl_system_prompt;
       localStorage.setItem('caption_app_qwen3vl_prompt_default_migrated', '1');
+    }
+    const legacyExternalPrompt = `Create a natural-language image caption for LoRA training.
+
+Write exactly one concise sentence. Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+
+Write in natural language, not as comma-separated tags. Do not invent details. Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+
+Keep the caption short and direct. Output only the caption.`;
+    if (String(merged.external_api_system_prompt ?? '').trim() === legacyExternalPrompt) {
+      merged.external_api_system_prompt = JOY_DEFAULTS.external_api_system_prompt;
     }
     for (const [k, v] of Object.entries(merged)) {
       const el = document.getElementById('joy_' + k);
@@ -11024,7 +11332,7 @@ function resetJoySettings() {
 }
 
 loadJoySettings();
-['joy_backend','joy_caption_format','joy_quantization','joy_caption_type','joy_caption_length','joy_visionmaxres','joy_max_tokens','joy_temperature','joy_top_p','joy_extra_options','joy_person_name','joy_hf_token','joy_no_overwrite','joy_append_existing','joy_ideogram4_name','joy_wd14_model','joy_wd14_general_threshold','joy_wd14_character_threshold','joy_wd14_include_rating','joy_wd14_include_characters','joy_wd14_replace_underscores','joy_wd14_undesired_tags','joy_qwen3vl_model','joy_qwen3vl_name','joy_qwen3vl_system_prompt','joy_qwen3vl_temperature','joy_qwen3vl_max_tokens','joy_qwen3vl_max_image_side','joy_external_api_url','joy_external_api_model','joy_external_api_key','joy_external_api_temperature','joy_external_api_max_tokens','joy_external_api_system_prompt'].forEach(id => {
+['joy_backend','joy_caption_format','joy_quantization','joy_caption_type','joy_caption_length','joy_visionmaxres','joy_max_tokens','joy_temperature','joy_top_p','joy_extra_options','joy_person_name','joy_hf_token','joy_no_overwrite','joy_append_existing','joy_ideogram4_name','joy_wd14_model','joy_wd14_general_threshold','joy_wd14_character_threshold','joy_wd14_include_rating','joy_wd14_include_characters','joy_wd14_replace_underscores','joy_wd14_undesired_tags','joy_qwen3vl_model','joy_qwen3vl_name','joy_qwen3vl_system_prompt','joy_qwen3vl_temperature','joy_qwen3vl_max_tokens','joy_qwen3vl_max_image_side','joy_external_api_url','joy_external_api_model','joy_external_api_name','joy_external_api_key','joy_external_api_temperature','joy_external_api_max_tokens','joy_external_api_disable_thinking','joy_external_api_system_prompt'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   const eventName = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
@@ -11188,7 +11496,7 @@ function renderCategoryPieChart(data) {
   const total = items.reduce((acc, item) => acc + (Number(item.count) || 0), 0);
   if (!total) {
     return `
-      <div class="summary-chart-title">Categories</div>
+      <div class="summary-chart-title">Folders</div>
       <div class="summary-empty-chart">No category data</div>
     `;
   }
@@ -11259,7 +11567,7 @@ function renderCategoryPieChart(data) {
   }).join('');
 
   return `
-    <div class="summary-chart-title">Categories</div>
+    <div class="summary-chart-title">Folders</div>
     <div class="summary-pie-layout">
       <div class="summary-pie-chart-wrap">
         <div class="summary-pie-chart" style="background:conic-gradient(${gradients.join(', ')});">
@@ -11270,6 +11578,26 @@ function renderCategoryPieChart(data) {
       <div class="summary-pie-legend-wrap">
         <div class="summary-pie-legend">${legend}</div>
       </div>
+    </div>
+  `;
+}
+
+function renderCategoryGroupStats(data) {
+  const items = Array.isArray(data?.category_groups) ? data.category_groups : [];
+  if (!items.length) {
+    return '<div class="summary-chart-title">Category groups</div><div class="summary-empty-chart">No category group data</div>';
+  }
+  return `
+    <div class="summary-chart-title">Category groups</div>
+    <div class="summary-category-groups">
+      ${items.map(item => `
+        <div class="summary-category-group-item">
+          <span class="summary-category-group-color" style="background:${item.color || '#9ca3af'}"></span>
+          <span class="summary-category-group-name">${item.name}</span>
+          <b>${Number(item.count) || 0} image${Number(item.count) === 1 ? '' : 's'}</b>
+          <span>${Number(item.percent) || 0}%</span>
+        </div>
+      `).join('')}
     </div>
   `;
 }
@@ -11322,6 +11650,10 @@ function buildSummaryHtml(data) {
       .summary-pie-legend-item img{width:18px;height:18px;border-radius:50%;object-fit:cover;}
       .summary-pie-legend-empty{color:#6b7280 !important;}
       .summary-pie-legend-empty img{opacity:.42;filter:grayscale(1);}
+      .summary-category-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:7px;}
+      .summary-category-group-item{display:grid;grid-template-columns:10px minmax(0,1fr) auto auto;gap:7px;align-items:center;border:1px solid color-mix(in srgb,var(--border) 65%,transparent);border-radius:6px;padding:7px 8px;font-size:12px;}
+      .summary-category-group-color{width:10px;height:10px;border-radius:50%;}
+      .summary-category-group-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;}
       .summary-empty-chart{opacity:.8;font-size:13px;}
       .summary-stats-block{line-height:1.2;}
       .summary-stats-left{padding-left:0 !important; margin-left:0 !important; text-indent:0; display:block; width:100%; align-self:flex-start;}
@@ -11354,6 +11686,7 @@ function buildSummaryHtml(data) {
         <div class="summary-tile"><div class="summary-tile-label">Aspect ratios</div><div class="summary-tile-value">${(data.aspect_chart || []).filter(item => Number(item.count) > 0).length}</div></div>
         <div class="summary-tile"><div class="summary-tile-label">Not in buckets</div><div class="summary-tile-value">${invalidBuckets}</div></div>
       </div>
+      ${categoriesVisible() ? `<div class="summary-chart-card" style="grid-column:1 / -1;">${renderCategoryGroupStats(data)}</div>` : ''}
       <div class="summary-chart-card">
         ${renderAspectBarChart(data)}
         <div class="summary-stats-block summary-stats-left" style="margin-top:4px;">
@@ -12168,6 +12501,7 @@ document.addEventListener('keydown', async (e) => {
     closeSummaryModal();
     closeToolsModal();
     closeCategoryDialog();
+    closeCategoryGroupDialog();
   }
   const isMod = e.ctrlKey || e.metaKey;
   const typingIntoField = isTypingElement();
@@ -12375,6 +12709,7 @@ def index():
         joy_model_data_json=json.dumps(JOYCLI_MODEL_OPTIONS),
         category_defs_json=json.dumps(category_context),
         category_folders=category_context,
+        category_groups=category_groups or default_category_groups(),
         icon_options=build_category_icon_options(category_context),
     )
 
@@ -12450,7 +12785,7 @@ def add_files():
         txt_path = dest_path.with_suffix(".txt")
         if not txt_path.exists():
             txt_path.write_text("", encoding="utf-8")
-        category_assignments[dest_path.name] = target_category
+        category_assignments[dest_path.name] = category_id_for_value(target_category)
         added_count += 1
 
     pairs_cache = load_pairs(current_folder)
@@ -12516,7 +12851,7 @@ def upload_images():
         txt_path = target_path.with_suffix(".txt")
         if not txt_path.exists():
             txt_path.write_text("", encoding="utf-8")
-        category_assignments[target_name] = target_category
+        category_assignments[target_name] = category_id_for_value(target_category)
         added.append(target_name)
         if convert_current:
             converted += 1
@@ -12543,7 +12878,7 @@ def upload_images():
 
 @app.route("/open_folder", methods=["POST"])
 def open_folder():
-    global current_folder, pairs_cache, message, folder_name, category_assignments, category_folders, selected_crop_base
+    global current_folder, pairs_cache, message, folder_name, category_assignments, category_folders, category_groups, selected_crop_base
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
@@ -12559,7 +12894,7 @@ def open_folder():
     current_folder = folder
     folder_name = folder
     write_image_folder_handoff(current_folder)
-    category_assignments, category_folders = load_category_state(folder)
+    category_assignments, category_folders, category_groups = load_category_state(folder)
     missing = ensure_missing_txt(folder)
     if missing:
         default_caption = request.form.get("default_caption", "")
@@ -12679,7 +13014,7 @@ def convert_images_to_png():
 
 @app.route("/close_folder", methods=["POST"])
 def close_folder():
-    global current_folder, pairs_cache, message, folder_name, category_assignments, category_folders
+    global current_folder, pairs_cache, message, folder_name, category_assignments, category_folders, category_groups
 
     if joycaption_status.get("running"):
         joycaption_status["interrupt_requested"] = True
@@ -12692,6 +13027,7 @@ def close_folder():
     folder_name = ""
     category_assignments = {}
     category_folders = []
+    category_groups = []
     write_image_folder_handoff(None)
     return redirect(url_for("index"))
 
@@ -12824,7 +13160,7 @@ def switch_to_simple():
     write_image_folder_handoff(current_folder)
     launch_local_app_after_port_closes("imageprep_simple.py", 5000)
     exit_soon()
-    return switch_page("http://127.0.0.1:5000/", "Simple Image Prep", initial_delay_ms=2200)
+    return switch_page("http://127.0.0.1:5000/", "Default mode", initial_delay_ms=2200)
 
 
 @app.route("/rename_all_pairs", methods=["POST"])
@@ -12889,7 +13225,7 @@ def rename_all_pairs():
                 if final_mask:
                     final_mask.parent.mkdir(exist_ok=True)
                     os.replace(temp_mask, final_mask)
-            renamed_categories[final_name] = normalize_category_name(category_assignments.get(old_img_name, DEFAULT_CATEGORY))
+            renamed_categories[final_name] = category_id_for_value(category_assignments.get(old_img_name, DEFAULT_CATEGORY))
             if final_name != old_img_name:
                 renamed_categories.pop(old_img_name, None)
 
@@ -13122,7 +13458,7 @@ def clone_pair():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
-    category_assignments[target_name] = normalize_category_name(category_assignments.get(img_name, DEFAULT_CATEGORY))
+    category_assignments[target_name] = category_id_for_value(category_assignments.get(img_name, DEFAULT_CATEGORY))
     save_category_assignments(current_folder, category_assignments)
     pairs_cache = load_pairs(current_folder)
 
@@ -13233,7 +13569,7 @@ def set_category():
     if not pair_exists(current_folder, img_name):
         return jsonify({"ok": False, "error": "Image no longer exists."}), 404
 
-    category_assignments[img_name] = category
+    category_assignments[img_name] = category_id_for_value(category)
     save_category_assignments(current_folder, category_assignments)
     return jsonify({
         "ok": True,
@@ -13256,6 +13592,84 @@ def unique_category_name(base_name, exclude_name=None):
     return candidate
 
 
+def unique_category_group_name(base_name, exclude_id=None):
+    base = re.sub(r"\s+", " ", str(base_name or "")).strip() or "New Group"
+    base = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", base).strip() or "New Group"
+    names = {
+        str(item.get("name") or "").casefold()
+        for item in category_groups
+        if item.get("id") != exclude_id
+    }
+    candidate = base
+    counter = 2
+    while candidate.casefold() in names:
+        candidate = f"{base} {counter}"
+        counter += 1
+    return candidate
+
+
+@app.route("/create_category_group", methods=["POST"])
+def create_category_group():
+    global category_groups
+    if not current_folder:
+        return jsonify({"ok": False, "error": "No folder opened."}), 400
+    data = request.get_json(force=True) or {}
+    name = unique_category_group_name(data.get("name") or "New Group")
+    base_id = normalize_category_group_id(name) or "group"
+    group_id = base_id
+    existing_ids = {item.get("id") for item in category_groups}
+    counter = 2
+    while group_id in existing_ids:
+        group_id = f"{base_id}-{counter}"
+        counter += 1
+    color = str(data.get("color") or DEFAULT_CATEGORY_COLORS[len(category_groups) % len(DEFAULT_CATEGORY_COLORS)])
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+        color = DEFAULT_CATEGORY_COLORS[len(category_groups) % len(DEFAULT_CATEGORY_COLORS)]
+    group = {"id": group_id, "name": name, "color": color}
+    category_groups.append(group)
+    save_category_state(current_folder, category_assignments, category_folders, category_groups)
+    return jsonify({"ok": True, "group": group})
+
+
+@app.route("/update_category_group", methods=["POST"])
+def update_category_group():
+    if not current_folder:
+        return jsonify({"ok": False, "error": "No folder opened."}), 400
+    data = request.get_json(force=True) or {}
+    group_id = normalize_category_group_id(data.get("id"))
+    group = category_group_for_id(group_id)
+    if not group:
+        return jsonify({"ok": False, "error": "Category group not found."}), 404
+    color = str(data.get("color") or group.get("color") or "#9ca3af")
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+        color = group.get("color") or "#9ca3af"
+    group.update({
+        "name": unique_category_group_name(data.get("name") or group.get("name"), exclude_id=group_id),
+        "color": color,
+    })
+    save_category_state(current_folder, category_assignments, category_folders, category_groups)
+    return jsonify({"ok": True, "group": group})
+
+
+@app.route("/delete_category_group", methods=["POST"])
+def delete_category_group():
+    global category_groups
+    if not current_folder:
+        return jsonify({"ok": False, "error": "No folder opened."}), 400
+    data = request.get_json(force=True) or {}
+    group_id = normalize_category_group_id(data.get("id"))
+    if group_id == DEFAULT_CATEGORY_GROUP_ID:
+        return jsonify({"ok": False, "error": "Uncategorized cannot be deleted."}), 400
+    if not category_group_for_id(group_id):
+        return jsonify({"ok": False, "error": "Category group not found."}), 404
+    category_groups = [item for item in category_groups if item.get("id") != group_id]
+    for folder in category_folders:
+        if folder.get("group_id") == group_id:
+            folder["group_id"] = DEFAULT_CATEGORY_GROUP_ID
+    save_category_state(current_folder, category_assignments, category_folders, category_groups)
+    return jsonify({"ok": True})
+
+
 @app.route("/create_category", methods=["POST"])
 def create_category():
     global category_folders
@@ -13274,6 +13688,7 @@ def create_category():
             "name": name,
             "icon": icon,
             "color": color,
+            "group_id": data.get("group_id") if category_group_for_id(data.get("group_id"), category_groups) else DEFAULT_CATEGORY_GROUP_ID,
             "x": data.get("x", (index % 5) * 112),
             "y": data.get("y", (index // 5) * 120),
         },
@@ -13281,7 +13696,7 @@ def create_category():
         {item.get("name") for item in category_folders},
     )
     category_folders.append(folder)
-    save_category_state(current_folder, category_assignments, category_folders)
+    save_category_state(current_folder, category_assignments, category_folders, category_groups)
     return jsonify({"ok": True, "category": folder})
 
 
@@ -13316,18 +13731,14 @@ def update_category():
         "name": new_name,
         "icon": icon,
         "color": color,
+        "group_id": data.get("group_id") if category_group_for_id(data.get("group_id"), category_groups) else target.get("group_id", DEFAULT_CATEGORY_GROUP_ID),
     })
     if "x" in data:
         target["x"] = max(0, int(data.get("x") or 0))
     if "y" in data:
         target["y"] = max(0, int(data.get("y") or 0))
 
-    if new_name != old_name:
-        for img_name, value in list(category_assignments.items()):
-            if value == old_name:
-                category_assignments[img_name] = new_name
-
-    save_category_state(current_folder, category_assignments, category_folders)
+    save_category_state(current_folder, category_assignments, category_folders, category_groups)
     return jsonify({"ok": True, "category": target})
 
 
@@ -13344,14 +13755,16 @@ def delete_category():
     if name == DEFAULT_CATEGORY:
         return jsonify({"ok": False, "error": "Undefined cannot be deleted."}), 400
 
+    target = category_folder_for_value(name)
+    target_id = target.get("id") if target else name
     original_len = len(category_folders)
     category_folders = [item for item in category_folders if item.get("name") != name]
     if len(category_folders) == original_len:
         return jsonify({"ok": False, "error": "Category not found."}), 404
     for img_name, value in list(category_assignments.items()):
-        if value == name:
-            category_assignments[img_name] = DEFAULT_CATEGORY
-    save_category_state(current_folder, category_assignments, category_folders)
+        if value in {name, target_id}:
+            category_assignments[img_name] = category_id_for_value(DEFAULT_CATEGORY)
+    save_category_state(current_folder, category_assignments, category_folders, category_groups)
     return jsonify({"ok": True})
 
 
@@ -13388,12 +13801,12 @@ def move_pairs():
             target_json = target_img.with_suffix(".json")
             if src_json.exists():
                 shutil.copy2(src_json, target_json)
-            category_assignments[target_name] = category
+            category_assignments[target_name] = category_id_for_value(category)
             changed.append(target_name)
     else:
         for img_name in img_names:
             if pair_exists(current_folder, img_name):
-                category_assignments[img_name] = category
+                category_assignments[img_name] = category_id_for_value(category)
                 changed.append(img_name)
 
     save_category_assignments(current_folder, category_assignments)
@@ -13561,15 +13974,27 @@ def summary():
     summary_text += f"<br><b>Total Captions:</b> {total_captions}"
     total_images = len(pairs_cache)
     folders = category_folders or default_category_folders()
+    groups = category_groups or default_category_groups()
+    folder_group_ids = {item.get("name"): item.get("group_id", DEFAULT_CATEGORY_GROUP_ID) for item in folders}
+    group_counts = defaultdict(int)
+    for category_name, count in category_counts.items():
+        group_counts[folder_group_ids.get(category_name, DEFAULT_CATEGORY_GROUP_ID)] += count
 
-    summary_text += "<br><br><b>Categories:</b><br>"
+    summary_text += "<br><br><b>Category groups:</b><br>"
 
     def _cat_line(label, value, indent=False):
-        numeric = value if isinstance(value, int) else int(str(value).rstrip('%') or 0)
+        match = re.match(r"\d+", str(value))
+        numeric = value if isinstance(value, int) else int(match.group(0) if match else 0)
         color = '#dc2626' if numeric == 0 and label != 'Undefined' else 'inherit'
         pad = 'padding-left:16px; ' if indent else ''
         return f"<span style='{pad}color:{color};'>{label}: {value}</span><br>"
 
+    for group in groups:
+        count = group_counts.get(group.get("id"), 0)
+        percent = round((count / total_images) * 100) if total_images else 0
+        summary_text += _cat_line(group.get("name"), f"{count} ({percent}%)", False)
+
+    summary_text += "<br><b>Folders:</b><br>"
     for category in [item["name"] for item in folders]:
         summary_text += _cat_line(category, category_counts.get(category, 0), False)
 
@@ -13579,6 +14004,16 @@ def summary():
     category_chart = [
         {"name": item["name"], "count": category_counts.get(item["name"], 0), "percent": (round((category_counts.get(item["name"], 0) / total_images) * 100) if total_images else 0), "icon": item["icon"], "color": item.get("color", "#9ca3af")}
         for item in folders
+    ]
+    category_group_chart = [
+        {
+            "id": item.get("id"),
+            "name": item.get("name"),
+            "count": group_counts.get(item.get("id"), 0),
+            "percent": round((group_counts.get(item.get("id"), 0) / total_images) * 100) if total_images else 0,
+            "color": item.get("color", "#9ca3af"),
+        }
+        for item in groups
     ]
 
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in (request.headers.get("Accept") or "")
@@ -13593,6 +14028,7 @@ def summary():
             "categories": [{"name": item["name"], "count": category_counts.get(item["name"], 0)} for item in folders],
             "aspect_chart": aspect_chart,
             "category_chart": category_chart,
+            "category_groups": category_group_chart,
         })
 
     message = summary_text
@@ -13726,6 +14162,8 @@ if __name__ == "__main__":
     message = ""
     folder_name = ""
     category_assignments = {}
+    category_folders = []
+    category_groups = []
     joycaption_status["running"] = False
     joycaption_status["status"] = "Idle"
     joycaption_status["log"] = ""
@@ -13741,7 +14179,7 @@ if __name__ == "__main__":
         try:
             current_folder = handoff_folder
             folder_name = handoff_folder
-            category_assignments, category_folders = load_category_state(handoff_folder)
+            category_assignments, category_folders, category_groups = load_category_state(handoff_folder)
             pairs_cache = load_pairs(handoff_folder)
             selected_crop_base = choose_auto_crop_base_resolution(handoff_folder)
         except Exception:
@@ -13750,5 +14188,6 @@ if __name__ == "__main__":
             folder_name = ""
             category_assignments = {}
             category_folders = []
+            category_groups = []
 
     app.run(host="127.0.0.1", port=5000, debug=False)

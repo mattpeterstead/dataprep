@@ -2344,7 +2344,7 @@ TEMPLATE = r"""
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>DataPrep</title>
+<title>DataPrep - Video</title>
 <link rel="icon" href="/category_icon/btn_dataprep.svg" type="image/svg+xml">
 <style>
 :root{
@@ -2409,6 +2409,74 @@ body{margin:0;padding-bottom:32px;background:var(--bg);color:var(--text);font-si
 .top > .row:first-of-type{padding-right:116px}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .top-controls{margin-top:2px}
+.top .top-controls .top-control-action{
+  align-self:stretch;
+  min-height:0;
+  padding:5px 10px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:#1b1b1b;
+  font-size:12px;
+}
+.top-menu{position:relative}
+.top-menu > summary{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:32px;
+  box-sizing:border-box;
+  padding:7px 10px;
+  color:var(--text);
+  background:#1f1f1f;
+  border:1px solid var(--border-strong);
+  border-radius:6px;
+  font-weight:650;
+  cursor:pointer;
+  list-style:none;
+  user-select:none;
+}
+.top-menu > summary::-webkit-details-marker{display:none}
+.top-menu > summary::after{
+  content:"";
+  width:6px;
+  height:6px;
+  border-right:1.5px solid var(--muted);
+  border-bottom:1.5px solid var(--muted);
+  transform:translateY(-2px) rotate(45deg);
+}
+.top-menu[open] > summary,
+.top-menu > summary:hover{
+  background:#272727;
+  border-color:#4b5563;
+}
+.top-menu[open] > summary::after{transform:translateY(2px) rotate(225deg)}
+.top-menu-popover{
+  position:absolute;
+  top:calc(100% + 5px);
+  left:0;
+  z-index:160;
+  display:grid;
+  min-width:190px;
+  padding:5px;
+  background:#171717;
+  border:1px solid var(--border-strong);
+  border-radius:7px;
+  box-shadow:0 10px 28px rgba(0,0,0,.45);
+}
+.top .top-menu-popover form{display:block;width:100%}
+.top .top-menu-popover button{
+  width:100%;
+  min-height:32px;
+  padding:6px 8px;
+  border:0;
+  background:transparent;
+  text-align:left;
+}
+.top .top-menu-popover button:hover{background:#262626}
+.top .top-menu-popover .toolbar-btn-content{
+  width:100%;
+  justify-content:flex-start;
+}
 .top form{display:inline-block;margin:0}
 button,input,select,textarea{
   background:#1f1f1f;color:var(--text);border:1px solid var(--border-strong);
@@ -2988,6 +3056,30 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
   white-space:nowrap;
 }
 .modal-body{padding:12px}
+.help-modal{width:min(760px,calc(100vw - 24px))}
+.help-content{
+  padding:14px 16px 18px;
+  color:var(--text);
+  line-height:1.55;
+}
+.help-content h4{
+  margin:16px 0 5px;
+  color:#f5f5f5;
+  font-size:13px;
+}
+.help-content h4:first-child{margin-top:0}
+.help-content p,
+.help-content ul{margin:0 0 8px}
+.help-content ul{padding-left:20px}
+.help-content kbd{
+  padding:1px 5px;
+  border:1px solid #3a3a3a;
+  border-radius:4px;
+  background:#111;
+  color:#f5f5f5;
+  font:inherit;
+  font-size:11px;
+}
 .slice-window-actions{
   margin-left:auto;
   display:inline-flex;
@@ -3391,20 +3483,37 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
     <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_dataprep.svg" alt=""><div class="mode-label">DataPrep - Video</div></div>
   </div>
   <div class="row" style="margin-bottom:8px;">
-    <form method="post" action="/open_folder" id="openFolderForm"><button type="submit" title="Open a video folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.png" alt="">Open</span></button></form>
-    <form method="post" action="/add_files"><button type="submit" title="Add video files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.png" alt="">Add</span></button></form>
-    <button id="openFolderInExplorerBtn" type="button" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.png" alt="">Show</span></button>
-    <button id="refreshFolderBtn" type="button" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.png" alt="">Refresh</span></button>
-    <button id="settingsBtn" type="button" title="Video settings"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_settings.png" alt="">Settings</span></button>
-    <form method="post" action="/backup" class="backup-form"><button type="submit" title="Back up video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.png" alt="">Backup</span></button></form>
-    <button id="captionStubBtn" type="button" title="Generate captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_caption.png" alt="">Caption</span></button>
-    <button id="textToolsBtn" type="button" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.png" alt="">Text</span></button>
-    <button type="button" id="openStatsModalBtn" title="Show dataset statistics"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_statistics.png" alt="">Stats</span></button>
-    <button type="button" id="autoCropAllBtn" title="Auto crop every video"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_auto_crop_all.png" alt="">Auto crop</span></button>
-    <button type="button" id="saveAllBtn" title="Save all changed video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.png" alt="">Save</span></button>
-    <button type="button" id="resetAllBtn" title="Reset unsaved edits"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_reset_all.png" alt="">Reset</span></button>
-    <button type="button" id="renameAllBtn" title="Rename all video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.png" alt="">Rename</span></button>
-    <form method="post" action="/close_folder"><button type="submit" title="Close Folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_close_folder.png" alt="">Close</span></button></form>
+    <details class="top-menu">
+      <summary>File</summary>
+      <div class="top-menu-popover">
+        <form method="post" action="/open_folder" id="openFolderForm"><button type="submit" title="Open a video folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.png" alt="">Open Folder</span></button></form>
+        <form method="post" action="/add_files"><button type="submit" title="Add video files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.png" alt="">Add Videos</span></button></form>
+        <button id="openFolderInExplorerBtn" type="button" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.png" alt="">Show Folder</span></button>
+        <form method="post" action="/backup" class="backup-form"><button type="submit" title="Back up video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.png" alt="">Backup</span></button></form>
+        <form method="post" action="/close_folder"><button type="submit" title="Close Folder"><span class="toolbar-btn-content">Close Folder</span></button></form>
+      </div>
+    </details>
+    <details class="top-menu">
+      <summary>Edit</summary>
+      <div class="top-menu-popover">
+        <button type="button" id="renameAllBtn" title="Rename all video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.png" alt="">Rename</span></button>
+        <button id="textToolsBtn" type="button" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.png" alt="">Text tools</span></button>
+      </div>
+    </details>
+    <details class="top-menu">
+      <summary>Tools</summary>
+      <div class="top-menu-popover">
+        <button id="captionStubBtn" type="button" title="Generate captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_caption.png" alt="">Auto-caption</span></button>
+        <button type="button" id="openStatsModalBtn" title="Show dataset statistics"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_statistics.png" alt="">Stats</span></button>
+        <button id="settingsBtn" type="button" title="Video settings"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_settings.png" alt="">Settings</span></button>
+      </div>
+    </details>
+    <details class="top-menu">
+      <summary>Help</summary>
+      <div class="top-menu-popover">
+        <button type="button" id="openHelpModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_quick_guide.png" alt="">Quick guide</span></button>
+      </div>
+    </details>
   </div>
   <div class="row top-controls">
     <div class="range-wrap">
@@ -3430,6 +3539,10 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
       <label><input type="radio" name="crop_base" value="1280"> 1280</label>
       <label><input type="radio" name="crop_base" value="1536"> 1536</label>
     </div>
+    <button id="refreshFolderBtn" type="button" class="top-control-action" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.png" alt="">Refresh</span></button>
+    <button type="button" id="autoCropAllBtn" class="top-control-action" title="Auto crop every video"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_auto_crop_all.png" alt="">Auto crop</span></button>
+    <button type="button" id="resetAllBtn" class="top-control-action" title="Reset unsaved edits"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_reset_all.png" alt="">Reset</span></button>
+    <button type="button" id="saveAllBtn" class="top-control-action" title="Save all changed video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.png" alt="">Save</span></button>
   </div>
 </div>
 
@@ -3945,6 +4058,38 @@ Output only the caption, with no intro or explanation.</textarea>
   </div>
 </div>
 
+<div id="helpModal" class="modal">
+  <div class="modal-card help-modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
+    <div class="modal-head">
+      <h3 id="helpModalTitle">Quick guide</h3>
+      <button type="button" class="modal-close-btn" id="closeHelpModalBtn" aria-label="Close quick guide">X</button>
+    </div>
+    <div class="help-content">
+      <h4>Getting started</h4>
+      <p>Select <b>File &gt; Open Folder</b> to open a video dataset. Matching caption files are created beside videos when needed.</p>
+
+      <h4>Selecting cards</h4>
+      <p>Click a card title to select it. Hold <kbd>Ctrl</kbd> to select several cards, or press <kbd>Ctrl+A</kbd> to select all cards.</p>
+      <ul>
+        <li><kbd>Ctrl+C</kbd> copies selected cards and <kbd>Ctrl+V</kbd> pastes copies.</li>
+        <li><kbd>Delete</kbd> removes selected cards after confirmation.</li>
+      </ul>
+
+      <h4>Editing videos</h4>
+      <p>Use card controls to play, stop, slice, crop, flip, rotate, zoom, clone, delete, and save videos. Toolbar Auto crop processes every card, Reset discards unsaved edits, and the red Save button indicates unsaved changes.</p>
+
+      <h4>Trimming and slicing</h4>
+      <p>Set trim start and end frames on a card. Slice opens a separate editor for dividing a video into kept and removed segments. Final export settings are available under <b>Tools &gt; Settings</b>.</p>
+
+      <h4>Captions and text</h4>
+      <p><b>Tools &gt; Auto-caption</b> opens Qwen3-VL, external API, and WhisperX options. <b>Edit &gt; Text tools</b> performs batch caption changes.</p>
+
+      <h4>Adding videos</h4>
+      <p>Use <b>File &gt; Add Videos</b>, drag videos into the page, or paste copied video files from the clipboard.</p>
+    </div>
+  </div>
+</div>
+
 <div id="appDialogBackdrop" class="modal">
   <div class="modal-card app-dialog">
     <div class="modal-head">
@@ -3965,6 +4110,25 @@ Output only the caption, with no intro or explanation.</textarea>
 <script>
 const BUCKETS = {{ bucket_options_json | safe }};
 const HAS_OPEN_FOLDER = {{ 'true' if current_folder else 'false' }};
+const topMenus = Array.from(document.querySelectorAll('.top-menu'));
+topMenus.forEach(menu => {
+  menu.addEventListener('toggle', () => {
+    if (!menu.open) return;
+    topMenus.forEach(other => {
+      if (other !== menu) other.open = false;
+    });
+  });
+  menu.addEventListener('click', event => {
+    if (event.target.closest('button')) menu.open = false;
+  });
+});
+document.addEventListener('pointerdown', event => {
+  if (event.target.closest('.top-menu')) return;
+  topMenus.forEach(menu => { menu.open = false; });
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') topMenus.forEach(menu => { menu.open = false; });
+});
 const VIDEO_EXTENSIONS_JS = ['.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v'];
 const VIDEO_MIME_EXTENSIONS = {
   'video/mp4': '.mp4',
@@ -6405,6 +6569,7 @@ const convertModal = document.getElementById('convertModal');
 const settingsModal = document.getElementById('settingsModal');
 const statsModal = document.getElementById('statsModal');
 const renameAllModal = document.getElementById('renameAllModal');
+const helpModal = document.getElementById('helpModal');
 const videoCaptionBackend = document.getElementById('video_caption_backend');
 const videoCaptionStatusText = document.getElementById('videoCaptionStatusText');
 const videoCaptionStartBtn = document.getElementById('videoCaptionStartBtn');
@@ -6515,6 +6680,17 @@ function openSettingsModal() {
 function closeSettingsModal() {
   settingsModal?.classList.remove('open');
 }
+
+function openHelpModal() {
+  helpModal?.classList.add('open');
+}
+
+function closeHelpModal() {
+  helpModal?.classList.remove('open');
+}
+
+document.getElementById('openHelpModalBtn')?.addEventListener('click', openHelpModal);
+document.getElementById('closeHelpModalBtn')?.addEventListener('click', closeHelpModal);
 
 if (sessionStorage.getItem(VIDEO_GRID_LOADING_KEY) === '1') {
   sessionStorage.removeItem(VIDEO_GRID_LOADING_KEY);
@@ -7344,6 +7520,7 @@ window.addEventListener('keydown', (e) => {
     settingsModal?.classList.remove('open');
     statsModal.classList.remove('open');
     renameAllModal.classList.remove('open');
+    helpModal?.classList.remove('open');
     closeSliceEditor();
   }
 });

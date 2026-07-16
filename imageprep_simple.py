@@ -1348,6 +1348,10 @@ def external_api_generation_settings(options):
                 "Use it for the main visible subject when appropriate inside existing description fields only, "
                 "without adding extra JSON keys."
             )
+    else:
+        external_name = " ".join(str(options.get("external_api_name") or "").split())
+        if external_name:
+            system_prompt = system_prompt.replace("[name]", external_name)
     temperature = float(options.get("external_api_temperature") or 0.2)
     max_tokens = max(1, int(float(options.get("external_api_max_tokens") or 256)))
     return api_url, model_id, api_key, system_prompt, temperature, max_tokens
@@ -1655,6 +1659,9 @@ def caption_image_with_external_api(image_path, options):
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if options.get("external_api_disable_thinking", True):
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+        payload["reasoning_budget"] = 0
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
     r = requests.post(api_url, json=payload, headers=headers, timeout=600)
@@ -1676,7 +1683,13 @@ def caption_image_with_external_api(image_path, options):
             if isinstance(x, dict)
         )
 
-    return str(content).strip()
+    content = str(content).strip()
+    if not content:
+        raise RuntimeError(
+            "External API returned an empty caption. Disable thinking/reasoning "
+            "or increase Max tokens, then try again."
+        )
+    return content
 
 
 def run_qwen3_vl_captioning(folder, options):
@@ -2397,7 +2410,7 @@ TEMPLATE = r'''
 <html>
 <head>
 <meta charset="UTF-8">
-<title>DataPrep</title>
+<title>DataPrep - Default mode</title>
 <link rel="icon" href="/category_icon/btn_dataprep.svg" type="image/svg+xml">
 <style>
 body { font-family: Inter, Segoe UI, Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.4; margin: 12px; background: var(--bg); color: var(--fg); }
@@ -4937,7 +4950,7 @@ body {
 <div class="drop-paste-overlay" id="dropPasteOverlay">Drop images to add them</div>
 <div class="top">
   <div class="mode-stack">
-    <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_dataprep.svg" alt=""><div class="mode-label">DataPrep - Simple</div></div>
+    <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_dataprep.svg" alt=""><div class="mode-label">DataPrep - Default mode</div></div>
   </div>
   <div class="row" style="margin-bottom:8px;">
     <details class="top-menu">
@@ -4970,8 +4983,8 @@ body {
     <details class="top-menu">
       <summary>Mode</summary>
       <div class="top-menu-popover">
-        <button type="button" disabled aria-current="page"><span class="toolbar-btn-content">Simple</span></button>
-        <form method="POST" action="/switch/advanced"><button type="submit" title="Switch to Advanced Image Prep"><span class="toolbar-btn-content">Advanced</span></button></form>
+        <button type="button" disabled aria-current="page"><span class="toolbar-btn-content">Default mode</span></button>
+        <form method="POST" action="/switch/advanced"><button type="submit" title="Switch to Workspace mode"><span class="toolbar-btn-content">Workspace mode</span></button></form>
       </div>
     </details>
     <details class="top-menu">
@@ -5388,6 +5401,13 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
           <input type="text" id="joy_external_api_model" placeholder="Any model ID accepted by the server">
         </label>
         <label>
+          <span class="qwen-name-title">
+            Name
+            <span class="regex-help-icon" role="img" aria-label="External API name help" data-tooltip="Replaces every [name] placeholder in the External API system prompt before captioning. Use a character name or LoRA training trigger. If left empty, [name] is left unchanged.">?</span>
+          </span>
+          <input type="text" id="joy_external_api_name" placeholder="Enter character name or trigger word">
+        </label>
+        <label>
           API key
           <input type="password" id="joy_external_api_key" placeholder="Optional" autocomplete="off">
         </label>
@@ -5399,16 +5419,24 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
           Max tokens
           <input type="number" id="joy_external_api_max_tokens" min="1" step="1" value="256">
         </label>
+        <label>
+          <span>Disable thinking/reasoning</span>
+          <input type="checkbox" id="joy_external_api_disable_thinking" checked>
+        </label>
       </div>
       <label style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
         System prompt
         <textarea id="joy_external_api_system_prompt" rows="8">Create a natural-language image caption for LoRA training.
 
-Write exactly one concise sentence. Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.
 
-Write in natural language, not as comma-separated tags. Do not invent details. Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
 
-Keep the caption short and direct. Output only the caption.</textarea>
+Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.
+
+Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+
+Keep the caption short and direct, usually 12-30 words. Output only the caption.</textarea>
       </label>
     </div>
 
@@ -5610,7 +5638,7 @@ Keep the caption short and direct. Output only the caption.</textarea>
       <p>Use <b>File &gt; Add Images</b>, drag images into the page, or paste them from the clipboard. Dragged and pasted images are converted to lossless PNG files.</p>
 
       <h4>Application mode</h4>
-      <p>Use the <b>Mode</b> menu to switch between the Simple and Advanced image workflows while keeping the current folder open.</p>
+      <p>Use the <b>Mode</b> menu to switch between the Default and Workspace image workflows while keeping the current folder open.</p>
     </div>
   </div>
 </div>
@@ -8854,16 +8882,22 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
   qwen3vl_max_image_side: '512',
   external_api_url: '',
   external_api_model: '',
+  external_api_name: '',
   external_api_key: '',
   external_api_temperature: '0.2',
   external_api_max_tokens: '256',
+  external_api_disable_thinking: true,
   external_api_system_prompt: `Create a natural-language image caption for LoRA training.
 
-Write exactly one concise sentence. Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.
 
-Write in natural language, not as comma-separated tags. Do not invent details. Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
 
-Keep the caption short and direct. Output only the caption.`,
+Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.
+
+Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+
+Keep the caption short and direct, usually 12-30 words. Output only the caption.`,
   auto_scroll: true,
 };
 
@@ -8890,6 +8924,8 @@ function updateCaptionBackendUI() {
   if (qwenName) qwenName.disabled = ideogramJson;
   const externalPrompt = document.getElementById('joy_external_api_system_prompt');
   if (externalPrompt) externalPrompt.disabled = ideogramJson;
+  const externalName = document.getElementById('joy_external_api_name');
+  if (externalName) externalName.disabled = ideogramJson;
   const backend = backendSelect?.value || 'joycaption';
   document.querySelectorAll('.joy-only').forEach(el => {
     el.style.display = backend === 'joycaption' ? '' : 'none';
@@ -8954,9 +8990,11 @@ function joySettings() {
     qwen3vl_max_image_side: document.getElementById('joy_qwen3vl_max_image_side').value,
     external_api_url: document.getElementById('joy_external_api_url').value,
     external_api_model: document.getElementById('joy_external_api_model').value,
+    external_api_name: document.getElementById('joy_external_api_name').value,
     external_api_key: document.getElementById('joy_external_api_key').value,
     external_api_temperature: document.getElementById('joy_external_api_temperature').value,
     external_api_max_tokens: document.getElementById('joy_external_api_max_tokens').value,
+    external_api_disable_thinking: document.getElementById('joy_external_api_disable_thinking').checked,
     external_api_system_prompt: document.getElementById('joy_external_api_system_prompt').value,
   };
 }
@@ -8980,6 +9018,7 @@ function loadJoySettings() {
       };
       merged.external_api_url = merged.qwen3vl_base_url;
       merged.external_api_model = legacyModels[merged.qwen3vl_model] || merged.qwen3vl_model || '';
+      merged.external_api_name = merged.qwen3vl_name || '';
       merged.external_api_temperature = merged.qwen3vl_temperature;
       merged.external_api_max_tokens = merged.qwen3vl_max_tokens;
       merged.external_api_system_prompt = merged.qwen3vl_system_prompt;
@@ -9000,6 +9039,16 @@ function loadJoySettings() {
     if (legacyQwenPrompts.includes(String(merged.qwen3vl_system_prompt ?? '').trim())) {
       merged.qwen3vl_system_prompt = JOY_DEFAULTS.qwen3vl_system_prompt;
       localStorage.setItem('caption_app_qwen3vl_prompt_default_migrated', '1');
+    }
+    const legacyExternalPrompt = `Create a natural-language image caption for LoRA training.
+
+Write exactly one concise sentence. Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+
+Write in natural language, not as comma-separated tags. Do not invent details. Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+
+Keep the caption short and direct. Output only the caption.`;
+    if (String(merged.external_api_system_prompt ?? '').trim() === legacyExternalPrompt) {
+      merged.external_api_system_prompt = JOY_DEFAULTS.external_api_system_prompt;
     }
     for (const [k, v] of Object.entries(merged)) {
       const el = document.getElementById('joy_' + k);
@@ -9050,7 +9099,7 @@ function resetJoySettings() {
 }
 
 loadJoySettings();
-['joy_backend','joy_caption_format','joy_quantization','joy_caption_type','joy_caption_length','joy_visionmaxres','joy_max_tokens','joy_temperature','joy_top_p','joy_extra_options','joy_person_name','joy_hf_token','joy_no_overwrite','joy_append_existing','joy_ideogram4_name','joy_wd14_model','joy_wd14_general_threshold','joy_wd14_character_threshold','joy_wd14_include_rating','joy_wd14_include_characters','joy_wd14_replace_underscores','joy_wd14_undesired_tags','joy_qwen3vl_model','joy_qwen3vl_name','joy_qwen3vl_system_prompt','joy_qwen3vl_temperature','joy_qwen3vl_max_tokens','joy_qwen3vl_max_image_side','joy_external_api_url','joy_external_api_model','joy_external_api_key','joy_external_api_temperature','joy_external_api_max_tokens','joy_external_api_system_prompt'].forEach(id => {
+['joy_backend','joy_caption_format','joy_quantization','joy_caption_type','joy_caption_length','joy_visionmaxres','joy_max_tokens','joy_temperature','joy_top_p','joy_extra_options','joy_person_name','joy_hf_token','joy_no_overwrite','joy_append_existing','joy_ideogram4_name','joy_wd14_model','joy_wd14_general_threshold','joy_wd14_character_threshold','joy_wd14_include_rating','joy_wd14_include_characters','joy_wd14_replace_underscores','joy_wd14_undesired_tags','joy_qwen3vl_model','joy_qwen3vl_name','joy_qwen3vl_system_prompt','joy_qwen3vl_temperature','joy_qwen3vl_max_tokens','joy_qwen3vl_max_image_side','joy_external_api_url','joy_external_api_model','joy_external_api_name','joy_external_api_key','joy_external_api_temperature','joy_external_api_max_tokens','joy_external_api_disable_thinking','joy_external_api_system_prompt'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   const eventName = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
@@ -10648,7 +10697,7 @@ def switch_to_advanced():
     write_image_folder_handoff(current_folder)
     launch_local_app_after_port_closes("imageprep.py", 5000)
     exit_soon()
-    return switch_page("http://127.0.0.1:5000/", "Advanced Image Prep", initial_delay_ms=2200)
+    return switch_page("http://127.0.0.1:5000/", "Workspace mode", initial_delay_ms=2200)
 
 
 @app.route("/rename_all_pairs", methods=["POST"])

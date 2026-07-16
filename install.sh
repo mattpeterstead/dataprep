@@ -358,20 +358,20 @@ case "${MODE,,}" in
     APP="$ROOT/imageprep_simple.py"
     URL="http://127.0.0.1:5000/"
     PORT="5000"
-    LABEL="Image Simple"
+    LABEL="Default mode"
     ;;
   image)
     APP="$ROOT/imageprep.py"
     URL="http://127.0.0.1:5000/"
     PORT="5000"
-    LABEL="Image Advanced"
+    LABEL="Workspace mode"
     ;;
   *)
     MODE="simple"
     APP="$ROOT/imageprep_simple.py"
     URL="http://127.0.0.1:5000/"
     PORT="5000"
-    LABEL="Image Simple"
+    LABEL="Default mode"
     ;;
 esac
 

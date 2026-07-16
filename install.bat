@@ -477,12 +477,12 @@ if /i "%MODE%"=="simple" (
   set "APP=%ROOT%imageprep_simple.py"
   set "URL=http://127.0.0.1:5000/"
   set "PORT=5000"
-  set "LABEL=Image Simple"
+  set "LABEL=Default mode"
 ) else (
   set "APP=%ROOT%imageprep.py"
   set "URL=http://127.0.0.1:5000/"
   set "PORT=5000"
-  set "LABEL=Image Advanced"
+  set "LABEL=Workspace mode"
 )
 
 title DataPrep - %LABEL%
