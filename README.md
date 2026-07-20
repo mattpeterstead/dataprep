@@ -1,7 +1,5 @@
 # DataPrep
 
-![DataPrep image workflow](docs/dataprep-simple.png)
-
 DataPrep is a local dataset preparation tool for image and video captioning workflows. It runs as a Flask app on `127.0.0.1` and stores captions as `.txt` sidecar files next to the source media.
 
 The app is designed for LoRA/dataset preparation work where files are edited directly in the dataset folder.
@@ -198,8 +196,6 @@ The watermark removal mask is temporary and is kept separate from the training m
 - **OpenCV Navier-Stokes**: an alternative fast CPU method.
 
 Use watermark removal only on images that you own or have permission to modify.
-
-![DataPrep Video mode](docs/dataprep-video.png)
 
 ## Video Workflow
 
