@@ -154,6 +154,7 @@ Image modes support:
 - zoom controls
 - mask editing
 - automatic mask generation with REMBG models
+- manual watermark removal with LaMa or fast OpenCV inpainting
 - caption backends such as JoyCaption, WD14, and Qwen3-VL
 - text tools
 - statistics
@@ -186,6 +187,18 @@ dataset/
 Masking mode supports brush, fill, right-button erase behavior, undo/redo history, mask opacity, automatic mask creation, mask expansion, and feathering.
 
 Automatic masking uses REMBG where available. Model files may be downloaded on first use.
+
+## Watermark Removal
+
+Both image modes provide **Tools > Remove watermark**. Enable the watermark editor, paint over the unwanted watermark with the existing Brush or Fill tools, and press the watermark removal button on the card. The generated result remains an unsaved preview until the card or toolbar **Save** button is used.
+
+The watermark removal mask is temporary and is kept separate from the training masks in the dataset's `mask` folder. Available backends are:
+
+- **LaMa**: recommended for larger logos, text, and textured backgrounds. The approximately 196 MB model is downloaded to the local PyTorch cache on first use.
+- **OpenCV Telea**: fast CPU processing for small marks and simple backgrounds.
+- **OpenCV Navier-Stokes**: an alternative fast CPU method.
+
+Use watermark removal only on images that you own or have permission to modify.
 
 ![DataPrep Video mode](docs/dataprep-video.png)
 

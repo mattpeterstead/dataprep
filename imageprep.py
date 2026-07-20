@@ -81,6 +81,7 @@ DEFAULT_CATEGORY_COLORS = [
 BUCKET_STEP = 64
 DEFAULT_AUTO_MASK_MODEL = "silueta"
 REMBG_SESSIONS = {}
+SIMPLE_LAMA_MODEL = None
 
 
 def remember_app(kind):
@@ -468,65 +469,18 @@ IDEOGRAM4_COMMON_MEDIA = (
     "collage",
 )
 IDEOGRAM4_JSON_SYSTEM_PROMPT += (
-    " style_description.medium must be exactly one of: "
+    " style_description.medium must be a concise string naming the visible medium, for example: "
     + ", ".join(IDEOGRAM4_COMMON_MEDIA)
-    + ". Do not use a free-form description in the medium field."
+    + ". For photographic captions use exactly photograph."
 )
 IDEOGRAM4_HEX_RE = re.compile(r"^#[0-9A-F]{6}$")
 
 
 def normalize_ideogram4_medium(value, prefer_photo=False):
-    text = str(value or "").strip().lower()
-    token = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
-    if token in IDEOGRAM4_COMMON_MEDIA:
-        return token
-
-    aliases = {
-        "photo": "photograph",
-        "photography": "photograph",
-        "photographic": "photograph",
-        "digital_illustration": "illustration",
-        "drawing": "illustration",
-        "anime": "illustration",
-        "cartoon": "illustration",
-        "vector_art": "illustration",
-        "3d": "3d_render",
-        "3d_art": "3d_render",
-        "3d_rendering": "3d_render",
-        "cgi": "3d_render",
-        "oil_painting": "painting",
-        "watercolor": "painting",
-        "watercolour": "painting",
-        "acrylic_painting": "painting",
-        "poster": "graphic_design",
-        "typography": "graphic_design",
-        "graphic_art": "graphic_design",
-        "digital_painting": "digital_art",
-        "concept_art": "digital_art",
-        "computer_art": "digital_art",
-        "screenprint": "screen_print",
-        "silkscreen": "screen_print",
-        "silk_screen": "screen_print",
-        "mixed_media_collage": "collage",
-        "photomontage": "collage",
-    }
-    if token in aliases:
-        return aliases[token]
-
-    keyword_media = (
-        (("collage", "montage"), "collage"),
-        (("screen print", "screenprint", "silkscreen", "silk screen"), "screen_print"),
-        (("3d", "render", "cgi"), "3d_render"),
-        (("digital art", "digital painting", "concept art", "computer art"), "digital_art"),
-        (("graphic design", "typography", "poster"), "graphic_design"),
-        (("painting", "watercolor", "watercolour", "gouache", "acrylic"), "painting"),
-        (("illustration", "drawing", "anime", "cartoon", "sketch", "vector"), "illustration"),
-        (("photo", "camera"), "photograph"),
-    )
-    for keywords, medium in keyword_media:
-        if any(keyword in text for keyword in keywords):
-            return medium
-    return "photograph" if prefer_photo else "illustration"
+    if prefer_photo:
+        return "photograph"
+    text = str(value or "").strip()
+    return text or "illustration"
 
 
 def normalize_caption_format(value):
@@ -699,12 +653,6 @@ def validate_ideogram4_caption(caption):
         for key in ("aesthetics", "lighting", "medium"):
             if not isinstance(style.get(key), str):
                 raise ValueError(f"style_description.{key} must be a string.")
-        if style["medium"] not in IDEOGRAM4_COMMON_MEDIA:
-            raise ValueError(
-                "style_description.medium must be one of: "
-                + ", ".join(IDEOGRAM4_COMMON_MEDIA)
-                + "."
-            )
         variant_key = "photo" if has_photo else "art_style"
         if not isinstance(style.get(variant_key), str):
             raise ValueError(f"style_description.{variant_key} must be a string.")
@@ -2587,6 +2535,87 @@ def auto_mask_image_bytes(
     return out.getvalue()
 
 
+def decode_png_data_url(data_url, label="image"):
+    value = str(data_url or "")
+    if not value.startswith("data:image/png;base64,"):
+        raise ValueError(f"Missing {label} data.")
+    try:
+        raw = base64.b64decode(value.split(",", 1)[1], validate=True)
+        with Image.open(io.BytesIO(raw)) as loaded:
+            return loaded.copy()
+    except Exception as exc:
+        raise ValueError(f"Invalid {label} data.") from exc
+
+
+def get_simple_lama_model():
+    global SIMPLE_LAMA_MODEL
+    if SIMPLE_LAMA_MODEL is None:
+        try:
+            from simple_lama_inpainting import SimpleLama
+        except Exception as exc:
+            raise RuntimeError(
+                "LaMa watermark removal is not installed. Run install.bat/install.sh, "
+                "or select an OpenCV backend."
+            ) from exc
+        SIMPLE_LAMA_MODEL = SimpleLama()
+    return SIMPLE_LAMA_MODEL
+
+
+def remove_watermark_image(folder, img_name, mask_data, backend="lama", radius=3, expand_pixels=2, source_data=""):
+    safe_name = Path(str(img_name or "")).name
+    img_path = Path(folder) / safe_name
+    if not img_path.exists() or not safe_name.lower().endswith(IMAGE_EXTENSIONS):
+        raise FileNotFoundError("Image no longer exists.")
+
+    if source_data:
+        source = decode_png_data_url(source_data, "watermark preview")
+    else:
+        with Image.open(img_path) as loaded:
+            source = ImageOps.exif_transpose(loaded).copy()
+    source = source.convert("RGBA")
+    mask = decode_png_data_url(mask_data, "watermark mask").convert("L")
+    if mask.size != source.size:
+        mask = mask.resize(source.size, Image.NEAREST)
+
+    try:
+        expand_pixels = max(0, min(128, int(float(expand_pixels or 0))))
+    except Exception:
+        expand_pixels = 0
+    mask = mask.point(lambda value: 255 if value >= 8 else 0)
+    if expand_pixels:
+        mask = mask.filter(ImageFilter.MaxFilter(expand_pixels * 2 + 1))
+    if not mask.getbbox():
+        raise ValueError("Paint over the watermark before applying removal.")
+
+    backend = str(backend or "lama").strip().lower()
+    if backend == "lama":
+        result_rgb = get_simple_lama_model()(source.convert("RGB"), mask).convert("RGB")
+    elif backend in {"opencv_telea", "opencv_ns"}:
+        try:
+            import cv2
+            import numpy as np
+        except Exception as exc:
+            raise RuntimeError("OpenCV watermark removal is not installed.") from exc
+        try:
+            radius = max(1.0, min(64.0, float(radius or 3)))
+        except Exception:
+            radius = 3.0
+        rgb = np.asarray(source.convert("RGB"))
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        mask_array = np.asarray(mask, dtype=np.uint8)
+        method = cv2.INPAINT_TELEA if backend == "opencv_telea" else cv2.INPAINT_NS
+        result_bgr = cv2.inpaint(bgr, mask_array, radius, method)
+        result_rgb = Image.fromarray(cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGB))
+    else:
+        raise ValueError("Unknown watermark removal backend.")
+
+    if result_rgb.size != source.size:
+        result_rgb = result_rgb.crop((0, 0, source.width, source.height))
+    result = result_rgb.convert("RGBA")
+    result.putalpha(source.getchannel("A"))
+    return result
+
+
 def image_names_for_category(category=None):
     category = normalize_category_name(category) if category else None
     names = []
@@ -2614,22 +2643,7 @@ def replace_in_all_captions(folder, match_string, replace_with, use_regex=False,
 
         if use_regex:
             regex = re.compile(match_string, re.MULTILINE | re.DOTALL)
-
-            parts = []
-            last_end = 0
-            n = 0
-
-            for m in regex.finditer(content):
-                start, end = m.span()
-                if start == end:
-                    continue
-                parts.append(content[last_end:start])
-                parts.append(replace_with)
-                last_end = end
-                n += 1
-
-            parts.append(content[last_end:])
-            new_content = "".join(parts)
+            new_content, n = regex.subn(lambda _match: replace_with, content)
         else:
             n = content.count(match_string)
             new_content = content.replace(match_string, replace_with)
@@ -3329,6 +3343,24 @@ body.mask-mode .redo-btn {
   display: none;
 }
 
+.watermark-apply-btn {
+  display: none;
+}
+
+body.watermark-mode .automask-btn {
+  display: none;
+}
+
+body.watermark-mode .flip-h-btn,
+body.watermark-mode .flip-v-btn {
+  display: none !important;
+}
+
+body.watermark-mode .watermark-apply-btn {
+  display: inline-flex;
+  border-color: #eab308;
+}
+
 .mask-tool-btn.active {
   border-color: var(--ok);
   background: rgba(22,163,74,.18);
@@ -3547,6 +3579,11 @@ body.mask-mode .redo-btn {
   font-size: 12px;
 }
 .small { font-size: 12px; color: var(--muted); }
+.watermark-help-text {
+  box-sizing: border-box;
+  margin: 10px 0;
+  padding: 0 12px;
+}
 
 /* Force card control icons to render at 100% (no scaling) */
 .icon-btn img {
@@ -5703,13 +5740,14 @@ body {
       <div class="top-menu-popover">
         <button type="button" id="maskModeBtn" class="mask-mode-btn" title="Open mask tools" aria-pressed="false"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_masking.png" alt="">Masking</span></button>
         <button type="button" id="renameAllBtn" title="Rename all image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.png" alt="">Rename</span></button>
-        <button type="button" id="openToolsModalBtnInline" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.png" alt="">Text tools</span></button>
+        <button type="button" id="openWatermarkModalBtn" title="Remove watermarks with an inpainting mask"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_watermark_removal.svg" alt="">Remove watermark</span></button>
       </div>
     </details>
     <details class="top-menu">
       <summary>Tools</summary>
       <div class="top-menu-popover">
         <button type="button" id="openJoyModalBtn" title="Generate captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_caption.png" alt="">Auto-caption</span></button>
+        <button type="button" id="openToolsModalBtnInline" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.png" alt="">Text tools</span></button>
         <button type="button" id="openSummaryModalBtn" title="Show dataset statistics"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_statistics.png" alt="">Stats</span></button>
         <button type="button" id="openJsonModalBtn" title="Inspect and edit Ideogram 4 JSON captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_json_captions.png" alt="">JSON captions</span></button>
       </div>
@@ -5866,6 +5904,9 @@ body {
       </button>
       <button type="button" class="icon-btn automask-btn" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" title="Auto mask" aria-label="Auto mask">
         <img src="/category_icon/btn_card_automask.png" alt="">
+      </button>
+      <button type="button" class="icon-btn watermark-apply-btn" data-index="{{ pair.index }}" title="Apply" aria-label="Apply">
+        <img src="/category_icon/btn_watermark_removal.svg" alt="">
       </button>
       <button type="button" class="icon-btn save-btn" id="save-btn-{{ pair.index }}" data-index="{{ pair.index }}" title="Save" aria-label="Save">
         <img src="/category_icon/btn_card_save.png" alt="">
@@ -6354,6 +6395,37 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
   </div>
 </div>
 
+<div class="joy-modal-backdrop" id="watermarkModalBackdrop">
+  <div class="joy-modal" role="dialog" aria-modal="true" aria-labelledby="watermarkModalTitle">
+    <div class="joy-modal-head">
+      <h3 id="watermarkModalTitle">Remove watermark</h3>
+      <button type="button" class="joy-close-btn" id="closeWatermarkModalBtn">x</button>
+    </div>
+    <p class="small watermark-help-text">Enable the editor, paint over the watermark, then use the removal button on that card. The preview is written to disk only when you save the card.</p>
+    <div class="mask-mode-row">
+      <button type="button" id="watermarkToggleModeBtn">Enable watermark editor</button>
+    </div>
+    <div class="joy-grid">
+      <label>
+        Backend
+        <select id="watermarkBackend">
+          <option value="lama">LaMa (recommended)</option>
+          <option value="opencv_telea">OpenCV Telea (fast)</option>
+          <option value="opencv_ns">OpenCV Navier-Stokes (fast)</option>
+        </select>
+      </label>
+      <label>
+        Mask expansion
+        <input type="number" id="watermarkExpandPixels" min="0" max="128" step="1" value="2">
+      </label>
+      <label id="watermarkRadiusLabel">
+        OpenCV radius
+        <input type="number" id="watermarkRadius" min="1" max="64" step="1" value="3">
+      </label>
+    </div>
+  </div>
+</div>
+
 <div class="joy-modal-backdrop" id="summaryModalBackdrop">
   <div class="joy-modal" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
     <div class="joy-modal-head">
@@ -6381,7 +6453,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
           <label style="display:flex; align-items:center; gap:6px;">
             <input type="checkbox" name="use_regex" value="1" id="sr_use_regex">
             Use regex
-            <span class="regex-help-icon" role="img" aria-label="Regex help" data-tooltip="Examples of Regexes:&#10;add string to start:  \A&#10;add string to end:  \Z&#10;target last tag:  ,[^,]*$&#10;replace all: .*">?</span>
+            <span class="regex-help-icon" role="img" aria-label="Regex help" data-tooltip="Examples of Regexes:&#10;add string to start:  \A&#10;add string to end:  \Z&#10;target last tag:  ,[^,]*$&#10;replace all: \A.*\Z">?</span>
           </label>
           <button type="submit">Replace all</button>
         </form>
@@ -6475,6 +6547,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
 
       <h4>Captions and text</h4>
       <p><b>Tools &gt; Auto-caption</b> generates captions, <b>Edit &gt; Text tools</b> performs batch text changes, and <b>Tools &gt; JSON captions</b> opens the Ideogram JSON editor.</p>
+      <p><b>Tools &gt; Remove watermark</b> opens a temporary inpainting editor. Paint the watermark, apply the preview on its card, and use Save to write the result.</p>
 
       <h4>Application mode</h4>
       <p>Use the <b>Mode</b> menu to switch between the Default and Workspace image workflows while keeping the current folder open.</p>
@@ -6552,6 +6625,7 @@ const dropPasteOverlay = document.getElementById('dropPasteOverlay');
 let currentCropBase = {{ selected_crop_base|int }};
 const cropStates = new Map();
 let maskModeActive = false;
+let maskModePurpose = 'training';
 let currentMaskTool = 'brush';
 let currentMaskSize = 32;
 let currentMaskFeather = 0;
@@ -6561,6 +6635,8 @@ let activeBrushCursorCanvas = null;
 let lastBrushCursorPoint = null;
 const maskCanvasLoaded = new Set();
 const maskStates = new Map();
+const watermarkMaskStates = new Map();
+const watermarkResults = new Map();
 let joySavedConfig = {};
 const categoryDesktop = document.getElementById('categoryDesktop');
 const desktopIconLayer = document.getElementById('desktopIconLayer');
@@ -7991,14 +8067,15 @@ function getMaskCanvas(index) {
 }
 
 function getMaskState(index) {
-  const existing = maskStates.get(index) || {};
+  const stateMap = maskModePurpose === 'watermark' ? watermarkMaskStates : maskStates;
+  const existing = stateMap.get(index) || {};
   const state = {
     undo: Array.isArray(existing.undo) ? existing.undo : [],
     redo: Array.isArray(existing.redo) ? existing.redo : [],
     dirty: !!existing.dirty,
     savedSnapshot: typeof existing.savedSnapshot === 'string' ? existing.savedSnapshot : '',
   };
-  maskStates.set(index, state);
+  stateMap.set(index, state);
   return state;
 }
 
@@ -8027,7 +8104,7 @@ function restoreMaskSnapshot(index, snapshot) {
 function setMaskDirty(index, dirty = true) {
   const state = getMaskState(index);
   state.dirty = !!dirty;
-  maskStates.set(index, state);
+  (maskModePurpose === 'watermark' ? watermarkMaskStates : maskStates).set(index, state);
   updateMaskHistoryButtons(index);
   markUnsaved(index);
 }
@@ -8041,7 +8118,7 @@ function pushMaskUndoSnapshot(index, snapshot) {
     if (state.undo.length > 10) state.undo.shift();
   }
   state.redo = [];
-  maskStates.set(index, state);
+  (maskModePurpose === 'watermark' ? watermarkMaskStates : maskStates).set(index, state);
   setMaskDirty(index, true);
 }
 
@@ -8051,7 +8128,7 @@ function clearMaskHistory(index, savedSnapshot = snapshotMaskCanvas(index)) {
   state.redo = [];
   state.dirty = false;
   state.savedSnapshot = savedSnapshot || '';
-  maskStates.set(index, state);
+  (maskModePurpose === 'watermark' ? watermarkMaskStates : maskStates).set(index, state);
   updateMaskHistoryButtons(index);
 }
 
@@ -8081,7 +8158,7 @@ async function undoMaskChange(index) {
   const restored = await restoreMaskSnapshot(index, previous);
   if (restored) {
     state.dirty = previous !== state.savedSnapshot;
-    maskStates.set(index, state);
+    (maskModePurpose === 'watermark' ? watermarkMaskStates : maskStates).set(index, state);
     updateMaskHistoryButtons(index);
     markUnsaved(index);
   }
@@ -8099,7 +8176,7 @@ async function redoMaskChange(index) {
   const restored = await restoreMaskSnapshot(index, next);
   if (restored) {
     state.dirty = next !== state.savedSnapshot;
-    maskStates.set(index, state);
+    (maskModePurpose === 'watermark' ? watermarkMaskStates : maskStates).set(index, state);
     updateMaskHistoryButtons(index);
     markUnsaved(index);
   }
@@ -8184,6 +8261,16 @@ function loadMaskCanvas(index, force = false) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (maskModePurpose === 'watermark') {
+    const state = getMaskState(index);
+    if (state.savedSnapshot && !force) {
+      restoreMaskSnapshot(index, state.savedSnapshot);
+    } else {
+      clearMaskHistory(index, snapshotMaskCanvas(index));
+    }
+    return;
+  }
 
   const maskImg = new Image();
   maskImg.onload = () => {
@@ -8751,9 +8838,21 @@ function attachMaskCanvasListeners(card) {
   canvas.addEventListener('pointercancel', finish);
 }
 
-async function setMaskMode(active) {
+async function setMaskMode(active, purpose = 'training') {
   const nextActive = !!active;
-  if (nextActive === maskModeActive) return;
+  const nextPurpose = purpose === 'watermark' ? 'watermark' : 'training';
+  if (nextActive === maskModeActive && (!nextActive || nextPurpose === maskModePurpose)) return;
+  if (nextActive && maskModeActive && nextPurpose !== maskModePurpose) {
+    if (maskModePurpose === 'training' && Array.from(maskStates.values()).some(state => state?.dirty)) {
+      await appAlert('Save or reset the unsaved training masks before opening the watermark editor.');
+      return;
+    }
+    if (maskModePurpose === 'watermark' && Array.from(watermarkMaskStates.values()).some(state => state?.dirty)) {
+      const discard = await appConfirm('Discard the unapplied watermark selections and switch modes?');
+      if (!discard) return;
+    }
+    await setMaskMode(false, maskModePurpose);
+  }
   const btn = document.getElementById('maskModeBtn');
   if (nextActive) {
     if (!HAS_OPEN_FOLDER) {
@@ -8761,27 +8860,32 @@ async function setMaskMode(active) {
       return;
     }
     btn?.setAttribute('aria-busy', 'true');
-    try {
-      const res = await fetch('/ensure_masks', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to create masks.');
-      if (data.message) setStatusbarMessage(data.message);
-    } catch (err) {
-      await appAlert(err?.message || 'Failed to enter Masking mode.');
-      btn?.removeAttribute('aria-busy');
-      return;
+    if (nextPurpose === 'training') {
+      try {
+        const res = await fetch('/ensure_masks', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to create masks.');
+        if (data.message) setStatusbarMessage(data.message);
+      } catch (err) {
+        await appAlert(err?.message || 'Failed to enter Masking mode.');
+        btn?.removeAttribute('aria-busy');
+        return;
+      }
     }
+    maskModePurpose = nextPurpose;
     maskModeActive = true;
     document.body.classList.add('mask-mode');
-    btn?.classList.add('is-active');
-    btn?.setAttribute('aria-pressed', 'true');
+    document.body.classList.toggle('watermark-mode', maskModePurpose === 'watermark');
+    btn?.classList.toggle('is-active', maskModePurpose === 'training');
+    btn?.setAttribute('aria-pressed', maskModePurpose === 'training' ? 'true' : 'false');
     updateMaskModeModalButton();
+    updateWatermarkModeButton();
     setMaskTool(currentMaskTool);
     syncMaskSizeControls();
     syncMaskFillToleranceControls();
     document.querySelectorAll('.pair-card').forEach(card => {
       const index = parseInt(card.dataset.index, 10);
-      if (Number.isFinite(index)) loadMaskCanvas(index, !getMaskState(index).dirty);
+      if (Number.isFinite(index)) loadMaskCanvas(index, true);
     });
     updateAllMaskHistoryButtons();
     btn?.removeAttribute('aria-busy');
@@ -8793,12 +8897,15 @@ async function setMaskMode(active) {
   closeMaskFillTolerancePopover();
   hideBrushCursor();
   document.body.classList.remove('mask-mode');
+  document.body.classList.remove('watermark-mode');
   btn?.classList.remove('is-active');
   btn?.setAttribute('aria-pressed', 'false');
   updateMaskModeModalButton();
+  updateWatermarkModeButton();
   document.querySelectorAll('.undo-btn').forEach(button => { button.disabled = false; });
   document.querySelectorAll('.redo-btn').forEach(button => { button.disabled = true; });
-  setStatusbarMessage('Masking mode closed.');
+  setStatusbarMessage(maskModePurpose === 'watermark' ? 'Watermark editor closed.' : 'Masking mode closed.');
+  maskModePurpose = 'training';
 }
 
 function toggleMaskMode() {
@@ -9135,8 +9242,9 @@ function getUnsavedCardIndexes(cards = null) {
     const captionChanged = (ta.value !== (ta.dataset.original ?? ''));
     const cropChanged = !!state.crop;
     const transformChanged = !!state.rotation || state.flipH || state.flipV;
-    const maskChanged = getMaskState(index).dirty;
-    if (captionChanged || cropChanged || transformChanged || maskChanged) out.push(index);
+    const maskChanged = !!maskStates.get(index)?.dirty;
+    const watermarkChanged = watermarkResults.has(index);
+    if (captionChanged || cropChanged || transformChanged || maskChanged || watermarkChanged) out.push(index);
   });
   return out;
 }
@@ -9177,7 +9285,8 @@ function markUnsaved(index) {
     !!state.rotation ||
     state.flipH ||
     state.flipV ||
-    getMaskState(index).dirty;
+    !!maskStates.get(index)?.dirty ||
+    watermarkResults.has(index);
 
   card.classList.toggle('unsaved', unsaved);
   ta.classList.toggle('unsaved', ta.value !== (ta.dataset.original ?? ''));
@@ -9302,9 +9411,13 @@ function updateCardIdentity(card, pair) {
   if (Number.isFinite(oldIndex) && oldIndex !== index) {
     cropStates.delete(oldIndex);
     maskStates.delete(oldIndex);
+    watermarkMaskStates.delete(oldIndex);
+    watermarkResults.delete(oldIndex);
   }
   cropStates.set(index, { crop: null, upscale: false, rotation: 0, flipH: false, flipV: false, ratioLocked: false, lockedAspect: null });
   maskStates.set(index, { undo: [], redo: [], dirty: false, savedSnapshot: '' });
+  watermarkMaskStates.delete(index);
+  watermarkResults.delete(index);
   card.classList.remove('unsaved');
   if (card.isConnected) {
     updateDimsColors();
@@ -9439,6 +9552,8 @@ async function handleDeleteButton(btn, event) {
 
     cropStates.delete(index);
     maskStates.delete(index);
+    watermarkMaskStates.delete(index);
+    watermarkResults.delete(index);
 
     selectedImgNames.delete(img);
     card?.remove();
@@ -9447,8 +9562,9 @@ async function handleDeleteButton(btn, event) {
     updateSaveAllButtonState();
     setStatusbarMessage(`Deleted 1 card.`);
   } catch (err) {
-    btn.disabled = false;
     await appAlert(err?.message || 'Delete failed');
+  } finally {
+    if (btn.isConnected) btn.disabled = false;
   }
 }
 
@@ -9473,6 +9589,8 @@ async function deleteSelectedCards() {
       if (Number.isFinite(index)) {
         cropStates.delete(index);
         maskStates.delete(index);
+        watermarkMaskStates.delete(index);
+        watermarkResults.delete(index);
       }
       selectedImgNames.delete(imgName);
       card?.remove();
@@ -9727,6 +9845,12 @@ function attachCardEventListeners(card) {
   if (autoMaskBtn && !autoMaskBtn.dataset.boundClick) {
     autoMaskBtn.dataset.boundClick = '1';
     autoMaskBtn.addEventListener('click', () => autoMaskCard(parseInt(autoMaskBtn.dataset.index, 10)));
+  }
+
+  const watermarkApplyBtn = card.querySelector('.watermark-apply-btn');
+  if (watermarkApplyBtn && !watermarkApplyBtn.dataset.boundClick) {
+    watermarkApplyBtn.dataset.boundClick = '1';
+    watermarkApplyBtn.addEventListener('click', () => applyWatermarkRemoval(parseInt(watermarkApplyBtn.dataset.index, 10)));
   }
 
   const undoBtn = card.querySelector('.undo-btn');
@@ -10501,6 +10625,54 @@ function getCardByIndex(index) {
   return document.querySelector(`.pair-card[data-index="${index}"]`);
 }
 
+function clearWatermarkMask(index) {
+  const canvas = prepareMaskCanvasForEdit(index);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  clearMaskHistory(index, snapshotMaskCanvas(index));
+}
+
+async function applyWatermarkRemoval(index) {
+  if (!maskModeActive || maskModePurpose !== 'watermark') return;
+  const card = getCardByIndex(index);
+  const canvas = prepareMaskCanvasForEdit(index);
+  const button = card?.querySelector('.watermark-apply-btn');
+  if (!card || !canvas) return;
+  button?.setAttribute('aria-busy', 'true');
+  if (button) button.disabled = true;
+  setStatusbarMessage(`Removing watermark from ${card.dataset.img}...`);
+  try {
+    const res = await fetch('/remove_watermark', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        img_name: card.dataset.img,
+        mask_data: canvas.toDataURL('image/png'),
+        source_data: watermarkResults.get(index) || '',
+        backend: document.getElementById('watermarkBackend')?.value || 'lama',
+        radius: document.getElementById('watermarkRadius')?.value || '3',
+        expand_pixels: document.getElementById('watermarkExpandPixels')?.value || '2',
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok || !data.result_data) throw new Error(data.error || 'Watermark removal failed.');
+    watermarkResults.set(index, data.result_data);
+    const image = document.getElementById(`crop-image-${index}`);
+    if (image) image.src = data.result_data;
+    clearWatermarkMask(index);
+    markUnsaved(index);
+    setStatusbarMessage(`Watermark removal preview ready for ${card.dataset.img}. Save the card to write it to disk.`);
+  } catch (err) {
+    await appAlert(err?.message || 'Watermark removal failed.');
+    setStatusbarMessage(err?.message || 'Watermark removal failed.');
+  } finally {
+    button?.removeAttribute('aria-busy');
+    if (button) button.disabled = false;
+  }
+}
+
 async function saveCard(index) {
   const card = document.querySelector(`.pair-card[data-index="${index}"]`);
   const ta = card.querySelector('.caption-textarea');
@@ -10513,7 +10685,7 @@ async function saveCard(index) {
     if (!ok) return;
   }
 
-  if (maskState.dirty) {
+  if (maskModePurpose === 'training' && maskState.dirty) {
     const maskSaved = await saveMaskCanvas(index);
     if (!maskSaved) return;
   }
@@ -10536,6 +10708,7 @@ async function saveCard(index) {
       flipH: !!state.flipH,
       flipV: !!state.flipV,
     },
+    watermark_result: watermarkResults.get(index) || '',
   };
 
   const res = await fetch('/save_pair', {
@@ -10551,6 +10724,7 @@ async function saveCard(index) {
   }
 
   ta.dataset.original = ta.value;
+  watermarkResults.delete(index);
 
   if (data.updated_pair) {
     const badge = document.getElementById(`dims-badge-${index}`);
@@ -10583,6 +10757,7 @@ async function saveCard(index) {
   });
   updateDimsColors();
   markUnsaved(index);
+  setStatusbarMessage(`Saved ${imgName}.`);
 }
 
 async function saveAllCards() {
@@ -10599,6 +10774,7 @@ async function saveAllCards() {
     await saveCard(i);
   }
   updateSaveAllButtonState();
+  setStatusbarMessage(`Saved ${indexes.length} image${indexes.length === 1 ? '' : 's'}.`);
 }
 
 async function saveCategoryCards(category) {
@@ -10615,6 +10791,7 @@ async function saveCategoryCards(category) {
     await saveCard(i);
   }
   updateSaveAllButtonState();
+  setStatusbarMessage(`Saved ${indexes.length} image${indexes.length === 1 ? '' : 's'} in ${category}.`);
 }
 
 async function renameAllPairs() {
@@ -10944,9 +11121,50 @@ function resetMaskSettings() {
 function updateMaskModeModalButton() {
   const btn = document.getElementById('maskToggleModeBtn');
   if (!btn) return;
-  btn.textContent = maskModeActive ? 'Disable masking mode' : 'Enable masking mode';
-  btn.classList.toggle('is-active', maskModeActive);
-  btn.setAttribute('aria-pressed', maskModeActive ? 'true' : 'false');
+  const active = maskModeActive && maskModePurpose === 'training';
+  btn.textContent = active ? 'Disable masking mode' : 'Enable masking mode';
+  btn.classList.toggle('is-active', active);
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+}
+
+const watermarkModalBackdrop = document.getElementById('watermarkModalBackdrop');
+
+function updateWatermarkModeButton() {
+  const btn = document.getElementById('watermarkToggleModeBtn');
+  if (!btn) return;
+  const active = maskModeActive && maskModePurpose === 'watermark';
+  btn.textContent = active ? 'Disable watermark editor' : 'Enable watermark editor';
+  btn.classList.toggle('is-active', active);
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+}
+
+function updateWatermarkBackendUi() {
+  const backend = document.getElementById('watermarkBackend')?.value || 'lama';
+  const radiusLabel = document.getElementById('watermarkRadiusLabel');
+  if (radiusLabel) radiusLabel.style.display = backend.startsWith('opencv_') ? '' : 'none';
+  localStorage.setItem('dataprep_watermark_backend', backend);
+  localStorage.setItem('dataprep_watermark_expand', document.getElementById('watermarkExpandPixels')?.value || '2');
+  localStorage.setItem('dataprep_watermark_radius', document.getElementById('watermarkRadius')?.value || '3');
+}
+
+function openWatermarkModal() {
+  watermarkModalBackdrop?.classList.add('open');
+  updateWatermarkModeButton();
+  updateWatermarkBackendUi();
+}
+
+function closeWatermarkModal() {
+  watermarkModalBackdrop?.classList.remove('open');
+}
+
+function loadWatermarkSettings() {
+  const backend = document.getElementById('watermarkBackend');
+  const expansion = document.getElementById('watermarkExpandPixels');
+  const radius = document.getElementById('watermarkRadius');
+  if (backend) backend.value = localStorage.getItem('dataprep_watermark_backend') || 'lama';
+  if (expansion) expansion.value = localStorage.getItem('dataprep_watermark_expand') || '2';
+  if (radius) radius.value = localStorage.getItem('dataprep_watermark_radius') || '3';
+  updateWatermarkBackendUi();
 }
 
 function uniqueCards(cards) {
@@ -11066,11 +11284,23 @@ document.getElementById('maskInterruptBtn')?.addEventListener('click', () => {
 });
 document.getElementById('maskResetSettingsBtn')?.addEventListener('click', resetMaskSettings);
 closeMaskModalBtn?.addEventListener('click', closeMaskModal);
+document.getElementById('openWatermarkModalBtn')?.addEventListener('click', openWatermarkModal);
+document.getElementById('closeWatermarkModalBtn')?.addEventListener('click', closeWatermarkModal);
+document.getElementById('watermarkToggleModeBtn')?.addEventListener('click', async () => {
+  const active = maskModeActive && maskModePurpose === 'watermark';
+  await setMaskMode(!active, 'watermark');
+  updateWatermarkModeButton();
+});
+['watermarkBackend', 'watermarkExpandPixels', 'watermarkRadius'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', updateWatermarkBackendUi);
+});
+loadWatermarkSettings();
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeJoyModal();
     closeMaskModal();
+    closeWatermarkModal();
     closeSummaryModal();
     closeToolsModal();
   }
@@ -12450,6 +12680,11 @@ function resetCardsUnsavedChanges(cards) {
     state.lockedAspect = null;
     cropStates.set(index, state);
     resetMaskUnsaved(index);
+    if (watermarkResults.has(index)) {
+      watermarkResults.delete(index);
+      const image = document.getElementById(`crop-image-${index}`);
+      if (image) image.src = `/image/${encodeURIComponent(card.dataset.img)}?t=${Date.now()}`;
+    }
 
     renderImageTransform(index);
     renderCrop(index);
@@ -13120,6 +13355,32 @@ def auto_mask():
     return jsonify({"ok": True, "model": model_name, "mask_data": data_url})
 
 
+@app.route("/remove_watermark", methods=["POST"])
+def remove_watermark():
+    if not current_folder:
+        return jsonify({"ok": False, "error": "No folder opened."}), 400
+    data = request.get_json(force=True) or {}
+    img_name = Path(str(data.get("img_name") or "")).name
+    if not img_name or not pair_exists(current_folder, img_name):
+        return jsonify({"ok": False, "error": "Image no longer exists."}), 404
+    try:
+        result = remove_watermark_image(
+            current_folder,
+            img_name,
+            data.get("mask_data"),
+            backend=data.get("backend", "lama"),
+            radius=data.get("radius", 3),
+            expand_pixels=data.get("expand_pixels", 2),
+            source_data=data.get("source_data", ""),
+        )
+        output = io.BytesIO()
+        result.save(output, format="PNG", compress_level=1)
+        result_data = "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, "result_data": result_data})
+
+
 @app.route("/category_icon/<path:filename>")
 def category_icon(filename):
     return send_from_directory(APP_DIR / "images", filename)
@@ -13324,6 +13585,7 @@ def save_pair():
     caption_format = normalize_caption_format(data.get("caption_format"))
     crop = data.get("crop")
     transforms = data.get("transforms") or {}
+    watermark_result = data.get("watermark_result") or ""
 
     if not img_name:
         return jsonify({"ok": False, "error": "Missing image name."}), 400
@@ -13339,7 +13601,22 @@ def save_pair():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    if crop or transforms:
+    if watermark_result:
+        try:
+            watermark_img = decode_png_data_url(watermark_result, "watermark preview")
+            with Image.open(img_path) as original:
+                src_format = original.format
+            if src_format in {"JPEG", "BMP"}:
+                watermark_img = watermark_img.convert("RGB")
+            save_kwargs = {"compress_level": 4} if src_format == "PNG" else {}
+            watermark_img.save(img_path, **save_kwargs)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Watermark save failed: {e}"}), 500
+
+    has_transform = bool(
+        transforms.get("flipH") or transforms.get("flipV") or float(transforms.get("rotation", 0) or 0)
+    )
+    if crop or has_transform:
         try:
             with Image.open(img_path) as img:
                 src_format = img.format

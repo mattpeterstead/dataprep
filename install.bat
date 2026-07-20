@@ -246,6 +246,14 @@ if not "%STEP_EXIT%"=="0" (
   goto :fail
 )
 
+echo Installing the LaMa inpainting helper without downgrading shared image libraries.
+"%PY_EXE%" -m pip --log "%LOG%" install --progress-bar on --no-deps simple-lama-inpainting
+if errorlevel 1 (
+  echo [ERROR] Failed to install the LaMa inpainting helper.
+  >> "%LOG%" echo [ERROR] Failed to install the LaMa inpainting helper.
+  goto :fail
+)
+
 echo.
 echo =================================
 echo Installing optional WhisperX video transcription backend

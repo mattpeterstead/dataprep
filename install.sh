@@ -207,6 +207,12 @@ run_logged "$PY_EXE" -m pip install --progress-bar on -r "$REQ" || {
 }
 log "Finished: $(date)"
 
+log "Installing the LaMa inpainting helper without downgrading shared image libraries."
+run_logged "$PY_EXE" -m pip install --progress-bar on --no-deps simple-lama-inpainting || {
+  log "[ERROR] Failed to install the LaMa inpainting helper."
+  fail
+}
+
 section "Installing optional WhisperX video transcription backend"
 
 log "WhisperX is optional and large. If this step fails, the rest of DataPrep can still run."
