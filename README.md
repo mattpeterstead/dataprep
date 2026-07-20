@@ -163,6 +163,12 @@ The Categorize images window can also use a local Qwen3-VL model or the External
 
 Text tools apply batch caption changes to the cards without immediately writing files. Use the card **Save** button or **Save all** to write accepted changes. **Undo** and **Reset** discard unsaved Text tools changes.
 
+### Ideogram 4 JSON captions
+
+Open **Tools > JSON captions** to edit Ideogram 4 caption sidecars with structured fields for the high-level description, style, background, object elements, and text elements. Elements can be added or removed independently. The separate **BBOXes** section adds, removes, and edits each element's normalized `[y_min, x_min, y_max, x_max]` coordinates in the range 0–1000; boxes can also be moved and resized directly over the image preview. **Raw JSON** remains available for advanced editing, and all views stay synchronized until the caption is validated and saved.
+
+Ideogram JSON caption generation is deterministic with temperature `0`. Its visible **Max tokens** value is respected directly and defaults to `768`; it is no longer silently increased during generation. The captioning log reports image preparation time, model-input preparation time, generation time, generated token count, and token rate.
+
 ## Masks
 
 Mask files are stored in a `mask` subfolder using matching image names:
@@ -227,6 +233,8 @@ The installer does not download every model weight up front. Some models are dow
 
 Large local vision-language models can require substantial VRAM. If captioning is slow or runs out of CUDA memory, reduce frame count, image/video max side, max tokens, or choose a smaller model.
 
+Qwen3-VL and External API system prompts have separate preset lists in Auto-caption. Use Load, Save, and Delete beside the prompt field to manage them. The built-in `Simple character caption` preset cannot be overwritten or deleted; the Qwen3-VL version also instructs the model not to mention hair or eye color.
+
 WhisperX is optional. If it or one of its dependencies is missing, only the WhisperX backend is unavailable; the rest of the app remains usable.
 
 ## Backup and Safety
@@ -265,6 +273,14 @@ Use the project virtual environment Python for accurate checks:
 ```bash
 .venv/bin/python -c "import torch; print(torch.cuda.is_available())"
 ```
+
+Run the release smoke tests from the project root:
+
+```bat
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+The smoke suite renders the image and video interfaces, checks their embedded JavaScript when Node.js is available, and verifies the system prompt preset lifecycle and built-in preset protection.
 
 If Tkinter is missing on Linux, install the Tk bindings for your distribution's Python package. Common package names include `python3-tk`, `python3-tkinter`, `python-tkinter`, and `tk`.
 

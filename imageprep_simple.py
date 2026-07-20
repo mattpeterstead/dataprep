@@ -48,6 +48,9 @@ IMAGE_FOLDER_HANDOFF_FILE = SETTINGS_DIR / ".dataset_forge_image_folder_handoff"
 CATEGORY_META_FILENAME = ".dataprep_categories.json"
 CATEGORY_PRESETS_FILE = SETTINGS_DIR / "category_presets.json"
 PROTECTED_CATEGORY_PRESET_NAME = "character"
+SYSTEM_PROMPT_PRESETS_FILE = SETTINGS_DIR / "system_prompt_presets.json"
+PROTECTED_SYSTEM_PROMPT_PRESET_NAME = "Simple character caption"
+SYSTEM_PROMPT_PRESET_BACKENDS = {"qwen3_vl", "external_api"}
 CATEGORY_DEFS = [
     {"name": "Close-up Front", "icon": "portrait_front.png"},
     {"name": "Close-up Left", "icon": "portrait_left.png"},
@@ -838,11 +841,96 @@ QWEN3_VL_LOCAL_DEFAULT_MAX_IMAGE_SIDE = 512
 QWEN3_VL_DEFAULT_SYSTEM_PROMPT = (
     "Create a natural-language image caption for LoRA training.\n\n"
     "Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.\n\n"
+    "Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible. Do not mention hair color or eye color.\n\n"
+    "Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.\n\n"
+    "Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.\n\n"
+    "Keep the caption short and direct, usually 12-30 words. Output only the caption."
+)
+EXTERNAL_API_DEFAULT_SYSTEM_PROMPT = (
+    "Create a natural-language image caption for LoRA training.\n\n"
+    "Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.\n\n"
     "Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.\n\n"
     "Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.\n\n"
     "Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.\n\n"
     "Keep the caption short and direct, usually 12-30 words. Output only the caption."
 )
+
+
+def normalize_system_prompt_backend(value):
+    backend = str(value or "").strip().lower()
+    if backend not in SYSTEM_PROMPT_PRESET_BACKENDS:
+        raise ValueError("Unknown system prompt preset backend.")
+    return backend
+
+
+def normalize_system_prompt_preset_name(value):
+    name = " ".join(str(value or "").split()).strip()
+    if not name:
+        raise ValueError("Preset name is required.")
+    if len(name) > 80:
+        raise ValueError("Preset name must be 80 characters or fewer.")
+    return name
+
+
+def default_system_prompt_for_backend(backend):
+    backend = normalize_system_prompt_backend(backend)
+    return QWEN3_VL_DEFAULT_SYSTEM_PROMPT if backend == "qwen3_vl" else EXTERNAL_API_DEFAULT_SYSTEM_PROMPT
+
+
+def load_system_prompt_presets():
+    presets = {backend: {} for backend in SYSTEM_PROMPT_PRESET_BACKENDS}
+    try:
+        raw = json.loads(SYSTEM_PROMPT_PRESETS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        raw = {}
+    raw_backends = raw.get("backends") if isinstance(raw, dict) else {}
+    if isinstance(raw_backends, dict):
+        for raw_backend, raw_presets in raw_backends.items():
+            try:
+                backend = normalize_system_prompt_backend(raw_backend)
+            except ValueError:
+                continue
+            if not isinstance(raw_presets, dict):
+                continue
+            for raw_name, raw_prompt in raw_presets.items():
+                try:
+                    name = normalize_system_prompt_preset_name(raw_name)
+                except ValueError:
+                    continue
+                if name.casefold() == PROTECTED_SYSTEM_PROMPT_PRESET_NAME.casefold():
+                    continue
+                prompt = raw_prompt.get("prompt") if isinstance(raw_prompt, dict) else raw_prompt
+                prompt = str(prompt or "").strip()
+                if prompt:
+                    presets[backend][name] = prompt
+    for backend in SYSTEM_PROMPT_PRESET_BACKENDS:
+        presets[backend][PROTECTED_SYSTEM_PROMPT_PRESET_NAME] = default_system_prompt_for_backend(backend)
+    return presets
+
+
+def save_system_prompt_presets_file(presets):
+    SETTINGS_DIR.mkdir(exist_ok=True)
+    clean = {backend: {} for backend in SYSTEM_PROMPT_PRESET_BACKENDS}
+    for backend in SYSTEM_PROMPT_PRESET_BACKENDS:
+        for raw_name, raw_prompt in (presets.get(backend) or {}).items():
+            name = normalize_system_prompt_preset_name(raw_name)
+            if name.casefold() == PROTECTED_SYSTEM_PROMPT_PRESET_NAME.casefold():
+                continue
+            prompt = str(raw_prompt or "").strip()
+            if prompt:
+                clean[backend][name] = {"prompt": prompt}
+    payload = {"version": 1, "backends": clean}
+    temp_path = SYSTEM_PROMPT_PRESETS_FILE.with_suffix(".json.tmp")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temp_path, SYSTEM_PROMPT_PRESETS_FILE)
+
+
+def find_system_prompt_preset(presets, backend, name):
+    wanted = str(name or "").casefold()
+    for preset_name, prompt in presets.get(backend, {}).items():
+        if preset_name.casefold() == wanted:
+            return preset_name, prompt
+    return None, None
 
 
 def qwen3_vl_generation_settings(options):
@@ -863,10 +951,10 @@ def qwen3_vl_generation_settings(options):
         if qwen_name:
             system_prompt = system_prompt.replace("[name]", qwen_name)
     temperature = float((options or {}).get("qwen3vl_temperature") or 0.2)
-    max_tokens = int((options or {}).get("qwen3vl_max_tokens") or 256)
+    default_max_tokens = 768 if ideogram_json else 256
+    max_tokens = max(1, int(float((options or {}).get("qwen3vl_max_tokens") or default_max_tokens)))
     if ideogram_json:
-        temperature = min(temperature, 0.2)
-        max_tokens = max(max_tokens, 1536)
+        temperature = 0.0
     return system_prompt, temperature, max_tokens
 
 
@@ -1322,7 +1410,7 @@ def external_api_generation_settings(options):
     api_key = str(options.get("external_api_key") or "").strip()
     ideogram_json = normalize_caption_format(options.get("caption_format")) == CAPTION_FORMAT_IDEOGRAM4_JSON
     system_prompt = IDEOGRAM4_JSON_SYSTEM_PROMPT if ideogram_json else str(
-        options.get("external_api_system_prompt") or QWEN3_VL_DEFAULT_SYSTEM_PROMPT
+        options.get("external_api_system_prompt") or EXTERNAL_API_DEFAULT_SYSTEM_PROMPT
     ).strip()
     if ideogram_json:
         ideogram_name = " ".join(str(options.get("ideogram4_name") or "").split())
@@ -1337,7 +1425,10 @@ def external_api_generation_settings(options):
         if external_name:
             system_prompt = system_prompt.replace("[name]", external_name)
     temperature = float(options.get("external_api_temperature") or 0.2)
-    max_tokens = max(1, int(float(options.get("external_api_max_tokens") or 256)))
+    default_max_tokens = 768 if ideogram_json else 256
+    max_tokens = max(1, int(float(options.get("external_api_max_tokens") or default_max_tokens)))
+    if ideogram_json:
+        temperature = 0.0
     return api_url, model_id, api_key, system_prompt, temperature, max_tokens
 
 
@@ -1446,6 +1537,7 @@ def load_qwen3_vl_local_model(model_name, options):
 
 
 def caption_image_with_qwen3_vl_local(image_path, options):
+    caption_started = time.perf_counter()
     model_name = options.get("qwen3vl_model", "Qwen3-VL-4B-Instruct")
     processor, model = load_qwen3_vl_local_model(model_name, options)
 
@@ -1458,6 +1550,7 @@ def caption_image_with_qwen3_vl_local(image_path, options):
     max_image_side = get_qwen3_vl_local_max_image_side(options)
     max_pixels = max_image_side * max_image_side
 
+    image_started = time.perf_counter()
     with Image.open(image_path) as im:
         image = ImageOps.exif_transpose(im).convert("RGB")
         original_size = image.size
@@ -1467,9 +1560,11 @@ def caption_image_with_qwen3_vl_local(image_path, options):
                 (max_image_side, max_image_side),
                 Image.Resampling.LANCZOS,
             )
-            _append_joy_log(
-                f"Resized image for local Qwen3-VL: {original_size[0]}x{original_size[1]} -> {image.width}x{image.height}.\n"
-            )
+    image_elapsed = time.perf_counter() - image_started
+    _append_joy_log(
+        f"Prepared image: {original_size[0]}x{original_size[1]} -> "
+        f"{image.width}x{image.height} in {image_elapsed:.2f}s.\n"
+    )
 
     user_prompt = "Describe this image."
     if system_prompt:
@@ -1489,6 +1584,7 @@ def caption_image_with_qwen3_vl_local(image_path, options):
         },
     ]
 
+    input_started = time.perf_counter()
     _append_joy_log(f"Preparing local Qwen3-VL inputs for {os.path.basename(image_path)}...\n")
     try:
         inputs = processor.apply_chat_template(
@@ -1510,8 +1606,13 @@ def caption_image_with_qwen3_vl_local(image_path, options):
         inputs = inputs.to(model.device)
     except Exception:
         pass
+    input_elapsed = time.perf_counter() - input_started
+    _append_joy_log(f"Prepared model inputs in {input_elapsed:.2f}s.\n")
 
-    _append_joy_log(f"Generating local Qwen3-VL caption for {os.path.basename(image_path)}...\n")
+    _append_joy_log(
+        f"Generating local Qwen3-VL caption for {os.path.basename(image_path)} "
+        f"(maximum {max_tokens} new tokens, temperature {temperature:g})...\n"
+    )
     generate_kwargs = {
         "max_new_tokens": max_tokens,
     }
@@ -1537,14 +1638,23 @@ def caption_image_with_qwen3_vl_local(image_path, options):
         except Exception:
             pass
 
+    generation_started = time.perf_counter()
     with torch.inference_mode():
         output_ids = model.generate(**inputs, **generate_kwargs)
+    generation_elapsed = time.perf_counter() - generation_started
 
     input_ids = inputs["input_ids"]
     trimmed = [
         out_ids[len(in_ids):]
         for in_ids, out_ids in zip(input_ids, output_ids)
     ]
+    generated_tokens = sum(len(token_ids) for token_ids in trimmed)
+    token_rate = generated_tokens / generation_elapsed if generation_elapsed > 0 else 0.0
+    _append_joy_log(
+        f"Generated {generated_tokens} token{'s' if generated_tokens != 1 else ''} "
+        f"in {generation_elapsed:.2f}s ({token_rate:.1f} tokens/s); "
+        f"total caption step {time.perf_counter() - caption_started:.2f}s.\n"
+    )
     output_text = processor.batch_decode(
         trimmed,
         skip_special_tokens=True,
@@ -4258,13 +4368,33 @@ body.dark .topbar {
 
 #joy_ideogram4_name,
 #joy_qwen3vl_name,
-#joy_qwen3vl_system_prompt {
+#joy_qwen3vl_system_prompt,
+#joy_external_api_system_prompt {
   box-sizing: border-box;
   max-width: 100%;
 }
 
 #joy_qwen3vl_system_prompt {
   resize: vertical;
+}
+
+.prompt-preset-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.prompt-preset-controls select {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+}
+
+.prompt-preset-controls button {
+  padding-inline: 9px;
+  white-space: nowrap;
 }
 
 .qwen-name-title {
@@ -4866,12 +4996,12 @@ textarea::placeholder {
 }
 
 .json-modal {
-  width: min(1180px, 100%);
+  width: min(1420px, 100%);
 }
 
 .json-workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 0.95fr) minmax(360px, 1.05fr);
+  grid-template-columns: minmax(320px, 0.85fr) minmax(520px, 1.15fr);
   gap: 12px;
   min-height: 560px;
 }
@@ -4990,10 +5120,161 @@ textarea::placeholder {
   background: rgba(37,99,235,.24);
 }
 
+.json-structured-scroll {
+  min-height: 0;
+  max-height: calc(100vh - 245px);
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.json-form-section {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 72%, var(--card));
+}
+
+.json-form-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.json-form-section h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.json-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.json-form-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.json-form-field.full {
+  grid-column: 1 / -1;
+}
+
+.json-form-field input,
+.json-form-field select,
+.json-form-field textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.json-form-field textarea {
+  min-height: 58px;
+  resize: vertical;
+}
+
+.json-form-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.json-elements-form,
+.json-bbox-form {
+  display: grid;
+  gap: 6px;
+}
+
+.json-element-editor,
+.json-bbox-editor {
+  display: grid;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.json-element-editor.active,
+.json-bbox-editor.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.json-element-editor-head,
+.json-bbox-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.json-element-editor-head button,
+.json-bbox-editor-head button,
+.json-form-section-head button {
+  padding: 4px 7px;
+  min-height: 26px;
+  font-size: 11px;
+}
+
+.json-element-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.json-bbox-coordinates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(64px, 1fr));
+  gap: 6px;
+}
+
+.json-bbox-empty {
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.json-raw-details {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.json-raw-details summary {
+  padding: 7px 9px;
+  cursor: pointer;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 750;
+  background: var(--panel);
+}
+
 .json-editor {
-  flex: 1 1 auto;
-  min-height: 460px;
-  resize: none;
+  display: block;
+  width: 100%;
+  min-height: 210px;
+  box-sizing: border-box;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  resize: vertical;
   font-family: Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   line-height: 1.35;
   white-space: pre;
@@ -5014,6 +5295,16 @@ textarea::placeholder {
 
 @media (max-width: 860px) {
   .json-workspace {
+    grid-template-columns: 1fr;
+  }
+  .json-structured-scroll {
+    max-height: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .json-form-grid,
+  .json-bbox-coordinates {
     grid-template-columns: 1fr;
   }
 }
@@ -5845,6 +6136,7 @@ body {
 
     <div class="tool-box ideogram4-only" id="ideogram4Settings" style="margin-top:12px; display:none;">
       <h3 style="margin-bottom:8px;">Ideogram 4 JSON options</h3>
+      <p class="small" style="margin:0 0 8px;">JSON generation uses temperature 0 and the visible Max tokens value. The JSON default is 768 tokens.</p>
       <label style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
         <span class="qwen-name-title">
           Name
@@ -5864,13 +6156,19 @@ body {
         </span>
         <input type="text" id="joy_qwen3vl_name" placeholder="Enter character name or trigger word">
       </label>
+      <div class="prompt-preset-controls" data-prompt-backend="qwen3_vl">
+        <select id="qwenPromptPresetSelect" aria-label="Qwen3-VL system prompt preset"><option value="Simple character caption">Simple character caption (built-in)</option></select>
+        <button type="button" id="loadQwenPromptPresetBtn">Load</button>
+        <button type="button" id="saveQwenPromptPresetBtn">Save</button>
+        <button type="button" id="deleteQwenPromptPresetBtn" disabled>Delete</button>
+      </div>
       <label style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
         System prompt
         <textarea id="joy_qwen3vl_system_prompt" rows="8">Create a natural-language image caption for LoRA training.
 
 Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.
 
-Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible. Do not mention hair color or eye color.
 
 Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.
 
@@ -5915,6 +6213,12 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
           <span>Disable thinking/reasoning</span>
           <input type="checkbox" id="joy_external_api_disable_thinking" checked>
         </label>
+      </div>
+      <div class="prompt-preset-controls" data-prompt-backend="external_api">
+        <select id="externalPromptPresetSelect" aria-label="External API system prompt preset"><option value="Simple character caption">Simple character caption (built-in)</option></select>
+        <button type="button" id="loadExternalPromptPresetBtn">Load</button>
+        <button type="button" id="saveExternalPromptPresetBtn">Save</button>
+        <button type="button" id="deleteExternalPromptPresetBtn" disabled>Delete</button>
       </div>
       <label style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
         System prompt
@@ -6228,7 +6532,86 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
         <div class="json-element-list" id="jsonElementList"></div>
       </div>
       <div class="json-editor-side">
-        <textarea class="json-editor" id="jsonEditor" spellcheck="false"></textarea>
+        <div class="json-structured-scroll" id="jsonStructuredForm">
+          <section class="json-form-section">
+            <div class="json-form-section-head">
+              <h4>Basic fields</h4>
+            </div>
+            <label class="json-form-field full">
+              High-level description
+              <textarea id="jsonHighLevelDescription" data-json-base-field="high_level_description"></textarea>
+            </label>
+          </section>
+
+          <section class="json-form-section">
+            <div class="json-form-section-head">
+              <h4>Style description</h4>
+            </div>
+            <div class="json-form-grid">
+              <label class="json-form-field">
+                Aesthetics
+                <input type="text" id="jsonStyleAesthetics" data-json-base-field="style_aesthetics">
+              </label>
+              <label class="json-form-field">
+                Lighting
+                <input type="text" id="jsonStyleLighting" data-json-base-field="style_lighting">
+              </label>
+              <label class="json-form-field">
+                Description type
+                <select id="jsonStyleVariant" data-json-base-field="style_variant">
+                  <option value="photo">Photo</option>
+                  <option value="art_style">Art style</option>
+                </select>
+              </label>
+              <label class="json-form-field">
+                Medium
+                <input type="text" id="jsonStyleMedium" data-json-base-field="style_medium">
+              </label>
+              <label class="json-form-field full">
+                Photo / art style description
+                <input type="text" id="jsonStyleVariantDescription" data-json-base-field="style_variant_description">
+              </label>
+              <label class="json-form-field full">
+                Color palette
+                <input type="text" id="jsonStylePalette" data-json-base-field="style_palette" placeholder="#RRGGBB, #RRGGBB">
+              </label>
+            </div>
+          </section>
+
+          <section class="json-form-section">
+            <div class="json-form-section-head">
+              <h4>Composition</h4>
+            </div>
+            <label class="json-form-field full">
+              Background
+              <textarea id="jsonBackground" data-json-base-field="background"></textarea>
+            </label>
+          </section>
+
+          <section class="json-form-section">
+            <div class="json-form-section-head">
+              <h4>Elements</h4>
+              <div class="json-element-actions">
+                <button type="button" id="jsonAddObjectBtn">+ Object</button>
+                <button type="button" id="jsonAddTextBtn">+ Text</button>
+              </div>
+            </div>
+            <div class="json-elements-form" id="jsonElementsForm"></div>
+          </section>
+
+          <section class="json-form-section">
+            <div class="json-form-section-head">
+              <h4>BBOXes</h4>
+            </div>
+            <p class="json-form-help">Coordinates use Ideogram order [y_min, x_min, y_max, x_max] and the range 0–1000.</p>
+            <div class="json-bbox-form" id="jsonBboxForm"></div>
+          </section>
+
+          <details class="json-raw-details">
+            <summary>Raw JSON</summary>
+            <textarea class="json-editor" id="jsonEditor" spellcheck="false"></textarea>
+          </details>
+        </div>
         <div class="json-status" id="jsonStatus">Open a folder with Ideogram 4 JSON captions.</div>
         <div class="joy-actions">
           <button type="button" id="jsonValidateBtn">Validate</button>
@@ -6294,7 +6677,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
       <p>Open <b>Edit &gt; Masking</b> to configure automatic masks or enable masking mode. With Brush selected, the left mouse button paints the mask and the right mouse button erases it. Fill supports the same left and right button behavior.</p>
 
       <h4>Captions and text</h4>
-      <p><b>Tools &gt; Auto-caption</b> generates captions, <b>Edit &gt; Text tools</b> applies batch text changes to the cards, and <b>Tools &gt; JSON captions</b> opens the Ideogram JSON editor. Text tools changes are written only when you use a card Save button or Save all; Undo and Reset discard them.</p>
+      <p><b>Tools &gt; Auto-caption</b> generates captions. Qwen3-VL and External API system prompts have separate Load, Save, and Delete preset controls; the built-in <b>Simple character caption</b> preset cannot be changed or deleted. <b>Edit &gt; Text tools</b> applies batch text changes to the cards, and <b>Tools &gt; JSON captions</b> opens the structured Ideogram JSON editor. Add object or text elements in Elements, and add or define their normalized coordinates in the separate BBOXes section. Raw JSON remains available for advanced editing. Text tools changes are written only when you use a card Save button or Save all; Undo and Reset discard them.</p>
       <p><b>Tools &gt; Remove watermark</b> opens a temporary inpainting editor. Paint the watermark manually or let Batch removal detect it separately in each image with Qwen3-VL. Results remain previews until you use a card Save button or Save all.</p>
 
       <h4>Adding images</h4>
@@ -9549,6 +9932,7 @@ function updateJoyProgress(count = 0, total = 0) {
 function openJoyModal() {
   joyModalBackdrop?.classList.add('open');
   joyStatusPollingEnabled = true;
+  initializeSystemPromptPresets();
   pollJoyStatus();
 }
 function closeJoyModal() {
@@ -10035,7 +10419,7 @@ const JOY_DEFAULTS = {
 
 Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.
 
-Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible. Do not mention hair color or eye color.
 
 Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.
 
@@ -10066,11 +10450,184 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
   auto_scroll: true,
 };
 
+const IDEOGRAM_JSON_DEFAULT_MAX_TOKENS = '768';
+const PROTECTED_SYSTEM_PROMPT_PRESET = 'Simple character caption';
+const systemPromptPresetConfigs = {
+  qwen3_vl: {
+    selectId: 'qwenPromptPresetSelect', loadId: 'loadQwenPromptPresetBtn',
+    saveId: 'saveQwenPromptPresetBtn', deleteId: 'deleteQwenPromptPresetBtn',
+    textareaId: 'joy_qwen3vl_system_prompt', storageKey: 'dataprep_qwen_system_prompt_preset', label: 'Qwen3-VL',
+  },
+  external_api: {
+    selectId: 'externalPromptPresetSelect', loadId: 'loadExternalPromptPresetBtn',
+    saveId: 'saveExternalPromptPresetBtn', deleteId: 'deleteExternalPromptPresetBtn',
+    textareaId: 'joy_external_api_system_prompt', storageKey: 'dataprep_external_system_prompt_preset', label: 'External API',
+  },
+};
+
+async function systemPromptPresetApi(url, options = {}) {
+  const response = await fetch(url, options);
+  let data = {};
+  try { data = await response.json(); } catch (error) {}
+  if (!response.ok || !data.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+  return data;
+}
+
+function updateSystemPromptPresetControls(backend) {
+  const cfg = systemPromptPresetConfigs[backend];
+  const select = document.getElementById(cfg.selectId);
+  const selected = select?.selectedOptions?.[0];
+  const ideogramJson = document.getElementById('joy_caption_format')?.value === 'ideogram4_json';
+  if (select) select.disabled = ideogramJson;
+  const loadButton = document.getElementById(cfg.loadId);
+  const saveButton = document.getElementById(cfg.saveId);
+  const deleteButton = document.getElementById(cfg.deleteId);
+  if (loadButton) loadButton.disabled = ideogramJson || !select?.value;
+  if (saveButton) saveButton.disabled = ideogramJson;
+  if (deleteButton) deleteButton.disabled = ideogramJson || !select?.value || selected?.dataset.protected === 'true';
+}
+
+async function refreshSystemPromptPresetList(backend, preferredName = '') {
+  const cfg = systemPromptPresetConfigs[backend];
+  const select = document.getElementById(cfg.selectId);
+  if (!select) return;
+  const data = await systemPromptPresetApi(`/system_prompt_presets?backend=${encodeURIComponent(backend)}`);
+  const previous = preferredName || select.value || localStorage.getItem(cfg.storageKey) || PROTECTED_SYSTEM_PROMPT_PRESET;
+  select.innerHTML = '';
+  (data.presets || []).forEach(item => {
+    const option = document.createElement('option');
+    option.value = item.name;
+    option.textContent = item.name + (item.protected ? ' (built-in)' : '');
+    option.dataset.protected = item.protected ? 'true' : 'false';
+    select.appendChild(option);
+  });
+  select.value = Array.from(select.options).some(option => option.value === previous) ? previous : PROTECTED_SYSTEM_PROMPT_PRESET;
+  localStorage.setItem(cfg.storageKey, select.value);
+  updateSystemPromptPresetControls(backend);
+}
+
+async function loadSelectedSystemPromptPreset(backend) {
+  const cfg = systemPromptPresetConfigs[backend];
+  const select = document.getElementById(cfg.selectId);
+  if (!select?.value) return;
+  try {
+    const data = await systemPromptPresetApi('/load_system_prompt_preset', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({backend, name: select.value}),
+    });
+    const textarea = document.getElementById(cfg.textareaId);
+    if (textarea) textarea.value = data.prompt;
+    localStorage.setItem(cfg.storageKey, data.name);
+    saveJoySettings();
+  } catch (error) { await appAlert(error.message); }
+}
+
+async function saveCurrentSystemPromptPreset(backend) {
+  const cfg = systemPromptPresetConfigs[backend];
+  const textarea = document.getElementById(cfg.textareaId);
+  const requestedName = await appPrompt(`${cfg.label} system prompt preset name:`, '', 'Save system prompt preset');
+  const name = String(requestedName || '').trim();
+  if (!name) return;
+  const sendSave = overwrite => systemPromptPresetApi('/save_system_prompt_preset', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({backend, name, prompt: textarea?.value || '', overwrite}),
+  });
+  try {
+    let data;
+    try { data = await sendSave(false); }
+    catch (error) {
+      if (!/already exists/i.test(error.message)) throw error;
+      if (!await appConfirm(`Overwrite system prompt preset "${name}"?`)) return;
+      data = await sendSave(true);
+    }
+    await refreshSystemPromptPresetList(backend, data.name);
+  } catch (error) { await appAlert(error.message); }
+}
+
+async function deleteSelectedSystemPromptPreset(backend) {
+  const cfg = systemPromptPresetConfigs[backend];
+  const select = document.getElementById(cfg.selectId);
+  const name = select?.value || '';
+  if (!name || select.selectedOptions?.[0]?.dataset.protected === 'true') return;
+  if (!await appConfirm(`Delete system prompt preset "${name}"?`)) return;
+  try {
+    await systemPromptPresetApi('/delete_system_prompt_preset', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({backend, name}),
+    });
+    await refreshSystemPromptPresetList(backend, PROTECTED_SYSTEM_PROMPT_PRESET);
+  } catch (error) { await appAlert(error.message); }
+}
+
+let systemPromptPresetsInitialized = false;
+async function initializeSystemPromptPresets() {
+  if (!systemPromptPresetsInitialized) {
+    Object.entries(systemPromptPresetConfigs).forEach(([backend, cfg]) => {
+      document.getElementById(cfg.selectId)?.addEventListener('change', event => {
+        localStorage.setItem(cfg.storageKey, event.target.value);
+        updateSystemPromptPresetControls(backend);
+      });
+      document.getElementById(cfg.loadId)?.addEventListener('click', () => loadSelectedSystemPromptPreset(backend));
+      document.getElementById(cfg.saveId)?.addEventListener('click', () => saveCurrentSystemPromptPreset(backend));
+      document.getElementById(cfg.deleteId)?.addEventListener('click', () => deleteSelectedSystemPromptPreset(backend));
+    });
+    systemPromptPresetsInitialized = true;
+  }
+  try {
+    await Promise.all(Object.keys(systemPromptPresetConfigs).map(backend => refreshSystemPromptPresetList(backend)));
+  } catch (error) { await appAlert(`Could not load system prompt presets: ${error.message}`); }
+}
+let previousCaptionFormat = null;
+
+function syncCaptionFormatGenerationDefaults(captionFormat) {
+  const ideogramJson = captionFormat === 'ideogram4_json';
+  const tokenFields = [
+    ['joy_qwen3vl_max_tokens', 'caption_app_ideogram_qwen_max_tokens', JOY_DEFAULTS.qwen3vl_max_tokens],
+    ['joy_external_api_max_tokens', 'caption_app_ideogram_external_max_tokens', JOY_DEFAULTS.external_api_max_tokens],
+  ];
+  const temperatureFields = [
+    ['joy_qwen3vl_temperature', JOY_DEFAULTS.qwen3vl_temperature],
+    ['joy_external_api_temperature', JOY_DEFAULTS.external_api_temperature],
+  ];
+  const formatChanged = previousCaptionFormat !== captionFormat;
+
+  tokenFields.forEach(([id, storageKey, standardDefault]) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    if (previousCaptionFormat === null) {
+      input.dataset.standardCaptionValue = standardDefault;
+      if (ideogramJson) {
+        const stored = localStorage.getItem(storageKey);
+        const current = String(input.value || '');
+        input.value = stored || (current && current !== String(standardDefault) ? current : IDEOGRAM_JSON_DEFAULT_MAX_TOKENS);
+      } else {
+        input.dataset.standardCaptionValue = input.value || standardDefault;
+      }
+    } else if (formatChanged && ideogramJson) {
+      input.dataset.standardCaptionValue = input.value || standardDefault;
+      input.value = localStorage.getItem(storageKey) || IDEOGRAM_JSON_DEFAULT_MAX_TOKENS;
+    } else if (formatChanged) {
+      localStorage.setItem(storageKey, input.value || IDEOGRAM_JSON_DEFAULT_MAX_TOKENS);
+      input.value = input.dataset.standardCaptionValue || standardDefault;
+    }
+  });
+
+  temperatureFields.forEach(([id, standardDefault]) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    if (formatChanged && ideogramJson) input.dataset.standardCaptionValue = input.value || standardDefault;
+    if (ideogramJson) input.value = '0';
+    else if (formatChanged) input.value = input.dataset.standardCaptionValue || standardDefault;
+    input.disabled = ideogramJson;
+  });
+  previousCaptionFormat = captionFormat;
+}
+
 
 function updateCaptionBackendUI() {
   const backendSelect = document.getElementById('joy_backend');
   const captionFormat = document.getElementById('joy_caption_format')?.value || 'standard_text';
   const ideogramJson = captionFormat === 'ideogram4_json';
+  syncCaptionFormatGenerationDefaults(captionFormat);
   if (ideogramJson && backendSelect && !['qwen3_vl', 'external_api'].includes(backendSelect.value)) {
     backendSelect.value = 'qwen3_vl';
   }
@@ -10091,6 +10648,7 @@ function updateCaptionBackendUI() {
   if (externalPrompt) externalPrompt.disabled = ideogramJson;
   const externalName = document.getElementById('joy_external_api_name');
   if (externalName) externalName.disabled = ideogramJson;
+  Object.keys(systemPromptPresetConfigs).forEach(updateSystemPromptPresetControls);
   const backend = backendSelect?.value || 'joycaption';
   document.querySelectorAll('.joy-only').forEach(el => {
     el.style.display = backend === 'joycaption' ? '' : 'none';
@@ -10200,6 +10758,17 @@ function loadJoySettings() {
     const legacyQwenPrompts = [
       'Describe this image in detailed tags and natural language.',
       'Create a concise LoRA training caption for a human figure image. Use comma-separated descriptive tags and short phrases. Focus on visible identity-neutral traits, pose, expression, gaze, body framing, camera angle, clothing, hairstyle, lighting, background, composition, and image style. Do not invent details. Do not mention image resolution or file metadata.',
+      `Create a natural-language image caption for LoRA training.
+
+Write exactly one concise sentence. Start the caption with [name]. Use [name] as the subject name or training trigger, and mention [name] only once.
+
+Describe only visible details in the image. Focus on expression, gaze, pose, hair, clothing, framing, setting, lighting, background, and image style when visible.
+
+Write in natural language, not as comma-separated tags. Do not use bullet points. Do not invent details. Do not describe identity, age, ethnicity, personality, story, intent, body shape, or body proportions unless clearly required by the visible image.
+
+Do not mention file names, metadata, resolution, image quality, camera model, or that this is an image.
+
+Keep the caption short and direct, usually 12-30 words. Output only the caption.`,
     ];
     if (legacyQwenPrompts.includes(String(merged.qwen3vl_system_prompt ?? '').trim())) {
       merged.qwen3vl_system_prompt = JOY_DEFAULTS.qwen3vl_system_prompt;
@@ -10270,6 +10839,15 @@ loadJoySettings();
   const eventName = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
   el.addEventListener(eventName, () => {
     if (id === 'joy_backend' || id === 'joy_caption_format') updateCaptionBackendUI();
+    if (
+      document.getElementById('joy_caption_format')?.value === 'ideogram4_json' &&
+      ['joy_qwen3vl_max_tokens', 'joy_external_api_max_tokens'].includes(id)
+    ) {
+      const storageKey = id === 'joy_qwen3vl_max_tokens'
+        ? 'caption_app_ideogram_qwen_max_tokens'
+        : 'caption_app_ideogram_external_max_tokens';
+      localStorage.setItem(storageKey, el.value || IDEOGRAM_JSON_DEFAULT_MAX_TOKENS);
+    }
     saveJoySettings();
     if (id === 'joy_caption_format') refreshCaptionsFromDisk(true);
   });
@@ -11338,6 +11916,11 @@ const jsonEditor = document.getElementById("jsonEditor");
 const jsonStatus = document.getElementById("jsonStatus");
 const jsonValidationLog = document.getElementById("jsonValidationLog");
 const jsonElementList = document.getElementById("jsonElementList");
+const jsonStructuredForm = document.getElementById("jsonStructuredForm");
+const jsonElementsForm = document.getElementById("jsonElementsForm");
+const jsonBboxForm = document.getElementById("jsonBboxForm");
+const jsonAddObjectBtn = document.getElementById("jsonAddObjectBtn");
+const jsonAddTextBtn = document.getElementById("jsonAddTextBtn");
 const jsonPrevBtn = document.getElementById("jsonPrevBtn");
 const jsonNextBtn = document.getElementById("jsonNextBtn");
 const jsonValidateBtn = document.getElementById("jsonValidateBtn");
@@ -11380,6 +11963,227 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function jsonText(value) {
+  return typeof value === "string" ? value : "";
+}
+
+function jsonPalette(value, limit) {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[\s,;]+/);
+  return items
+    .map(item => String(item || "").trim().toUpperCase())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function canonicalJsonElement(source = {}, forcedType = "") {
+  const type = forcedType || (source?.type === "text" ? "text" : "obj");
+  const element = { type };
+  if (Array.isArray(source?.bbox) && source.bbox.length === 4) {
+    element.bbox = normalizeJsonBbox(source.bbox);
+  }
+  if (type === "text") element.text = jsonText(source?.text);
+  element.desc = jsonText(source?.desc);
+  const palette = jsonPalette(source?.color_palette, 5);
+  if (palette.length) element.color_palette = palette;
+  return element;
+}
+
+function jsonFormData(source = null) {
+  const root = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  const sourceStyle = root.style_description && typeof root.style_description === "object"
+    ? root.style_description
+    : {};
+  const variant = Object.hasOwn(sourceStyle, "art_style") && !Object.hasOwn(sourceStyle, "photo")
+    ? "art_style"
+    : "photo";
+  const style = {
+    aesthetics: jsonText(sourceStyle.aesthetics),
+    lighting: jsonText(sourceStyle.lighting),
+  };
+  if (variant === "photo") {
+    style.photo = jsonText(sourceStyle.photo);
+    style.medium = jsonText(sourceStyle.medium) || "photograph";
+  } else {
+    style.medium = jsonText(sourceStyle.medium) || "illustration";
+    style.art_style = jsonText(sourceStyle.art_style);
+  }
+  const stylePalette = jsonPalette(sourceStyle.color_palette, 16);
+  if (stylePalette.length) style.color_palette = stylePalette;
+
+  const sourceComposition = root.compositional_deconstruction && typeof root.compositional_deconstruction === "object"
+    ? root.compositional_deconstruction
+    : {};
+  const sourceElements = Array.isArray(sourceComposition.elements) ? sourceComposition.elements : [];
+  return {
+    high_level_description: jsonText(root.high_level_description),
+    style_description: style,
+    compositional_deconstruction: {
+      background: jsonText(sourceComposition.background),
+      elements: sourceElements
+        .filter(element => element && typeof element === "object" && !Array.isArray(element))
+        .map(element => canonicalJsonElement(element)),
+    },
+  };
+}
+
+function currentJsonFormData() {
+  return jsonFormData(parseJsonEditorValue());
+}
+
+function jsonStyleVariant(data) {
+  return Object.hasOwn(data?.style_description || {}, "art_style") ? "art_style" : "photo";
+}
+
+function setJsonStyleVariant(data, variant, description = null) {
+  const previous = data.style_description || {};
+  const nextDescription = description === null
+    ? jsonText(previous.photo ?? previous.art_style)
+    : jsonText(description);
+  const next = {
+    aesthetics: jsonText(previous.aesthetics),
+    lighting: jsonText(previous.lighting),
+  };
+  if (variant === "art_style") {
+    next.medium = jsonText(previous.medium) || "illustration";
+    next.art_style = nextDescription;
+  } else {
+    next.photo = nextDescription;
+    next.medium = jsonText(previous.medium) || "photograph";
+  }
+  const palette = jsonPalette(previous.color_palette, 16);
+  if (palette.length) next.color_palette = palette;
+  data.style_description = next;
+}
+
+function jsonElementTitle(element, index) {
+  const detail = String(element?.desc || element?.text || "").trim();
+  return `${index + 1}. ${element?.type === "text" ? "Text" : "Object"}${detail ? ` – ${detail.slice(0, 60)}` : ""}`;
+}
+
+function renderJsonElementEditors(data) {
+  if (!jsonElementsForm) return;
+  const elements = getIdeogramElements(data);
+  if (!elements.length) {
+    jsonElementsForm.innerHTML = '<div class="json-bbox-empty">No elements. Add an object or text element.</div>';
+    return;
+  }
+  jsonElementsForm.innerHTML = elements.map((element, index) => {
+    const type = element?.type === "text" ? "text" : "obj";
+    return `
+      <article class="json-element-editor${index === jsonActiveElementIndex ? " active" : ""}" data-json-element-editor="${index}">
+        <div class="json-element-editor-head">
+          <strong>${escapeHtml(jsonElementTitle(element, index))}</strong>
+          <button type="button" data-json-element-action="remove" data-json-element-index="${index}">Remove</button>
+        </div>
+        <div class="json-form-grid">
+          <label class="json-form-field">
+            Type
+            <select data-json-element-field="type" data-json-element-index="${index}">
+              <option value="obj"${type === "obj" ? " selected" : ""}>Object</option>
+              <option value="text"${type === "text" ? " selected" : ""}>Text</option>
+            </select>
+          </label>
+          ${type === "text" ? `
+            <label class="json-form-field">
+              Visible text
+              <input type="text" value="${escapeHtml(element.text || "")}" data-json-element-field="text" data-json-element-index="${index}">
+            </label>
+          ` : ""}
+          <label class="json-form-field full">
+            Description
+            <textarea data-json-element-field="desc" data-json-element-index="${index}">${escapeHtml(element.desc || "")}</textarea>
+          </label>
+          <label class="json-form-field full">
+            Color palette
+            <input type="text" value="${escapeHtml(jsonPalette(element.color_palette, 5).join(", "))}" data-json-element-field="color_palette" data-json-element-index="${index}" placeholder="#RRGGBB, #RRGGBB">
+          </label>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderJsonBboxEditors(data) {
+  if (!jsonBboxForm) return;
+  const elements = getIdeogramElements(data);
+  if (!elements.length) {
+    jsonBboxForm.innerHTML = '<div class="json-bbox-empty">Add an element before adding a BBOX.</div>';
+    return;
+  }
+  jsonBboxForm.innerHTML = elements.map((element, index) => {
+    const bbox = Array.isArray(element?.bbox) && element.bbox.length === 4
+      ? normalizeJsonBbox(element.bbox)
+      : null;
+    return `
+      <article class="json-bbox-editor${index === jsonActiveElementIndex ? " active" : ""}" data-json-bbox-editor="${index}">
+        <div class="json-bbox-editor-head">
+          <strong>${escapeHtml(jsonElementTitle(element, index))}</strong>
+          <button type="button" data-json-bbox-action="${bbox ? "remove" : "add"}" data-json-element-index="${index}">${bbox ? "Remove BBOX" : "Add BBOX"}</button>
+        </div>
+        ${bbox ? `
+          <div class="json-bbox-coordinates">
+            ${["Y min", "X min", "Y max", "X max"].map((label, coordinate) => `
+              <label class="json-form-field">
+                ${label}
+                <input type="number" min="0" max="1000" step="1" value="${bbox[coordinate]}" data-json-bbox-coordinate="${coordinate}" data-json-element-index="${index}">
+              </label>
+            `).join("")}
+          </div>
+        ` : '<div class="json-form-help">This element has no bounding box.</div>'}
+      </article>
+    `;
+  }).join("");
+}
+
+function renderJsonStructuredForm(source = null) {
+  const data = jsonFormData(source ?? parseJsonEditorValue());
+  const style = data.style_description;
+  const variant = jsonStyleVariant(data);
+  const values = {
+    jsonHighLevelDescription: data.high_level_description,
+    jsonStyleAesthetics: style.aesthetics,
+    jsonStyleLighting: style.lighting,
+    jsonStyleVariant: variant,
+    jsonStyleVariantDescription: style[variant],
+    jsonStyleMedium: style.medium,
+    jsonStylePalette: jsonPalette(style.color_palette, 16).join(", "),
+    jsonBackground: data.compositional_deconstruction.background,
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.value = value ?? "";
+  });
+  renderJsonElementEditors(data);
+  renderJsonBboxEditors(data);
+}
+
+function syncJsonStructuredSelectionStyles() {
+  jsonElementsForm?.querySelectorAll("[data-json-element-editor]").forEach(node => {
+    node.classList.toggle("active", Number(node.dataset.jsonElementEditor) === jsonActiveElementIndex);
+  });
+  jsonBboxForm?.querySelectorAll("[data-json-bbox-editor]").forEach(node => {
+    node.classList.toggle("active", Number(node.dataset.jsonBboxEditor) === jsonActiveElementIndex);
+  });
+}
+
+function syncJsonBboxInputs(index, bbox) {
+  jsonBboxForm?.querySelectorAll(`[data-json-bbox-coordinate][data-json-element-index="${index}"]`).forEach(input => {
+    const coordinate = Number(input.dataset.jsonBboxCoordinate);
+    input.value = String(bbox[coordinate]);
+  });
+}
+
+function writeJsonStructuredData(data, { rerenderStructure = false } = {}) {
+  if (!jsonEditor) return;
+  const canonical = jsonFormData(data);
+  jsonEditor.value = JSON.stringify(canonical, null, 2);
+  setJsonStatus("Unsaved JSON changes.");
+  renderJsonBboxes();
+  if (rerenderStructure) renderJsonStructuredForm(canonical);
 }
 
 function renderJsonElementList(data) {
@@ -11432,6 +12236,7 @@ function renderJsonBboxes() {
 function selectJsonElement(index) {
   jsonActiveElementIndex = Number.isFinite(index) ? index : -1;
   renderJsonBboxes();
+  syncJsonStructuredSelectionStyles();
 }
 
 function clampJsonCoord(value) {
@@ -11466,7 +12271,9 @@ function writeJsonElementBbox(index, bbox) {
   jsonEditor.value = JSON.stringify(data, null, 2);
   jsonActiveElementIndex = index;
   setJsonStatus("Unsaved JSON changes.");
+  syncJsonBboxInputs(index, elements[index].bbox);
   renderJsonBboxes();
+  syncJsonStructuredSelectionStyles();
   return true;
 }
 
@@ -11538,12 +12345,14 @@ function renderJsonCaptionItem() {
     if (jsonPreviewImage) jsonPreviewImage.removeAttribute("src");
     if (jsonBboxLayer) jsonBboxLayer.innerHTML = "";
     if (jsonElementList) jsonElementList.innerHTML = "";
+    renderJsonStructuredForm({});
     setJsonStatus("No images found.", "error");
     return;
   }
   jsonActiveElementIndex = -1;
   if (jsonImageSelect) jsonImageSelect.value = String(jsonCaptionIndex);
   if (jsonEditor) jsonEditor.value = item.text || "";
+  renderJsonStructuredForm(parseJsonEditorValue());
   if (jsonPreviewImage) {
     jsonPreviewImage.src = `/image/${encodeURIComponent(item.img_name)}?json_view=${Date.now()}`;
     jsonPreviewImage.alt = item.img_name;
@@ -11601,6 +12410,7 @@ async function validateCurrentJson({ applyNormalized = false } = {}) {
   }
   if (applyNormalized) jsonEditor.value = data.caption || jsonEditor.value;
   setJsonStatus("Valid Ideogram 4 JSON.", "ok");
+  renderJsonStructuredForm(parseJsonEditorValue());
   renderJsonBboxes();
   return true;
 }
@@ -11624,6 +12434,7 @@ function swapCurrentJsonBboxOrder() {
   }
   jsonEditor.value = JSON.stringify(data, null, 2);
   setJsonStatus(`Swapped ${changed} bbox field${changed === 1 ? "" : "s"}. Save to write the change.`, "ok");
+  renderJsonStructuredForm(data);
   renderJsonBboxes();
 }
 
@@ -11705,8 +12516,108 @@ jsonValidateBtn?.addEventListener("click", () => validateCurrentJson({ applyNorm
 jsonValidateAllBtn?.addEventListener("click", validateAllJsonCaptions);
 jsonSwapBboxBtn?.addEventListener("click", swapCurrentJsonBboxOrder);
 jsonSaveBtn?.addEventListener("click", saveCurrentJsonCaption);
+jsonStructuredForm?.addEventListener("input", event => {
+  const field = event.target.dataset.jsonBaseField;
+  if (!field) return;
+  const data = currentJsonFormData();
+  const style = data.style_description;
+  if (field === "high_level_description") data.high_level_description = event.target.value;
+  else if (field === "style_aesthetics") style.aesthetics = event.target.value;
+  else if (field === "style_lighting") style.lighting = event.target.value;
+  else if (field === "style_variant") setJsonStyleVariant(data, event.target.value);
+  else if (field === "style_variant_description") style[jsonStyleVariant(data)] = event.target.value;
+  else if (field === "style_medium") style.medium = event.target.value;
+  else if (field === "style_palette") {
+    const palette = jsonPalette(event.target.value, 16);
+    if (palette.length) style.color_palette = palette;
+    else delete style.color_palette;
+  } else if (field === "background") {
+    data.compositional_deconstruction.background = event.target.value;
+  }
+  writeJsonStructuredData(data, { rerenderStructure: field === "style_variant" });
+});
+jsonStructuredForm?.addEventListener("input", event => {
+  const field = event.target.dataset.jsonElementField;
+  if (!field) return;
+  const index = Number(event.target.dataset.jsonElementIndex);
+  const data = currentJsonFormData();
+  const elements = getIdeogramElements(data);
+  if (!Number.isInteger(index) || !elements[index]) return;
+  const element = elements[index];
+  if (field === "type") {
+    elements[index] = canonicalJsonElement(element, event.target.value);
+  } else if (field === "color_palette") {
+    const palette = jsonPalette(event.target.value, 5);
+    if (palette.length) element.color_palette = palette;
+    else delete element.color_palette;
+  } else {
+    element[field] = event.target.value;
+  }
+  jsonActiveElementIndex = index;
+  writeJsonStructuredData(data, { rerenderStructure: field === "type" });
+});
+jsonStructuredForm?.addEventListener("change", event => {
+  if (!event.target.matches("[data-json-bbox-coordinate]")) return;
+  const index = Number(event.target.dataset.jsonElementIndex);
+  const coordinate = Number(event.target.dataset.jsonBboxCoordinate);
+  const data = currentJsonFormData();
+  const element = getIdeogramElements(data)[index];
+  if (!element || !Number.isInteger(coordinate) || coordinate < 0 || coordinate > 3) return;
+  const bbox = Array.isArray(element.bbox) ? [...element.bbox] : [250, 250, 750, 750];
+  bbox[coordinate] = clampJsonCoord(Number(event.target.value));
+  element.bbox = normalizeJsonBbox(bbox);
+  jsonActiveElementIndex = index;
+  writeJsonStructuredData(data);
+  renderJsonBboxEditors(data);
+});
+jsonAddObjectBtn?.addEventListener("click", () => {
+  const data = currentJsonFormData();
+  const elements = getIdeogramElements(data);
+  elements.push(canonicalJsonElement({ type: "obj", desc: "" }));
+  jsonActiveElementIndex = elements.length - 1;
+  writeJsonStructuredData(data, { rerenderStructure: true });
+});
+jsonAddTextBtn?.addEventListener("click", () => {
+  const data = currentJsonFormData();
+  const elements = getIdeogramElements(data);
+  elements.push(canonicalJsonElement({ type: "text", text: "", desc: "" }));
+  jsonActiveElementIndex = elements.length - 1;
+  writeJsonStructuredData(data, { rerenderStructure: true });
+});
+jsonElementsForm?.addEventListener("click", event => {
+  const remove = event.target.closest('[data-json-element-action="remove"]');
+  if (remove) {
+    const index = Number(remove.dataset.jsonElementIndex);
+    const data = currentJsonFormData();
+    const elements = getIdeogramElements(data);
+    if (Number.isInteger(index) && elements[index]) elements.splice(index, 1);
+    jsonActiveElementIndex = Math.min(index, elements.length - 1);
+    writeJsonStructuredData(data, { rerenderStructure: true });
+    return;
+  }
+  const editor = event.target.closest("[data-json-element-editor]");
+  if (editor) selectJsonElement(Number(editor.dataset.jsonElementEditor));
+});
+jsonBboxForm?.addEventListener("click", event => {
+  const action = event.target.closest("[data-json-bbox-action]");
+  if (action) {
+    const index = Number(action.dataset.jsonElementIndex);
+    const data = currentJsonFormData();
+    const element = getIdeogramElements(data)[index];
+    if (!element) return;
+    if (action.dataset.jsonBboxAction === "add") element.bbox = [250, 250, 750, 750];
+    else delete element.bbox;
+    jsonActiveElementIndex = index;
+    writeJsonStructuredData(data, { rerenderStructure: true });
+    return;
+  }
+  const editor = event.target.closest("[data-json-bbox-editor]");
+  if (editor) selectJsonElement(Number(editor.dataset.jsonBboxEditor));
+});
 jsonEditor?.addEventListener("input", () => {
   setJsonStatus("Unsaved JSON changes.");
+  const data = parseJsonEditorValue();
+  if (data) renderJsonStructuredForm(data);
   renderJsonBboxes();
 });
 jsonBboxLayer?.addEventListener("click", event => {
@@ -13688,6 +14599,87 @@ def backup():
     if wants_json:
         return jsonify({"ok": True, "copied": copied, "message": message})
     return redirect(url_for("index"))
+
+
+@app.route("/system_prompt_presets")
+def system_prompt_presets():
+    try:
+        backend = normalize_system_prompt_backend(request.args.get("backend"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    presets = load_system_prompt_presets()
+    items = [
+        {
+            "name": name,
+            "protected": name.casefold() == PROTECTED_SYSTEM_PROMPT_PRESET_NAME.casefold(),
+        }
+        for name in presets[backend]
+    ]
+    items.sort(key=lambda item: (not item["protected"], item["name"].casefold()))
+    return jsonify({"ok": True, "backend": backend, "presets": items})
+
+
+@app.route("/load_system_prompt_preset", methods=["POST"])
+def load_system_prompt_preset():
+    data = request.get_json(force=True) or {}
+    try:
+        backend = normalize_system_prompt_backend(data.get("backend"))
+        name = normalize_system_prompt_preset_name(data.get("name"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    preset_name, prompt = find_system_prompt_preset(load_system_prompt_presets(), backend, name)
+    if prompt is None:
+        return jsonify({"ok": False, "error": "System prompt preset not found."}), 404
+    return jsonify({"ok": True, "backend": backend, "name": preset_name, "prompt": prompt})
+
+
+@app.route("/save_system_prompt_preset", methods=["POST"])
+def save_system_prompt_preset():
+    data = request.get_json(force=True) or {}
+    try:
+        backend = normalize_system_prompt_backend(data.get("backend"))
+        name = normalize_system_prompt_preset_name(data.get("name"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    prompt = str(data.get("prompt") or "").strip()
+    if not prompt:
+        return jsonify({"ok": False, "error": "System prompt cannot be empty."}), 400
+    if name.casefold() == PROTECTED_SYSTEM_PROMPT_PRESET_NAME.casefold():
+        return jsonify({"ok": False, "error": f'The built-in "{PROTECTED_SYSTEM_PROMPT_PRESET_NAME}" preset cannot be overwritten.', "protected": True}), 403
+    presets = load_system_prompt_presets()
+    existing_name, existing_prompt = find_system_prompt_preset(presets, backend, name)
+    if existing_prompt is not None and not bool(data.get("overwrite")):
+        return jsonify({"ok": False, "error": "A preset with this name already exists.", "exists": True, "name": existing_name}), 409
+    if existing_name:
+        presets[backend].pop(existing_name, None)
+    presets[backend][name] = prompt
+    try:
+        save_system_prompt_presets_file(presets)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Preset save failed: {exc}"}), 500
+    return jsonify({"ok": True, "backend": backend, "name": name, "overwritten": existing_prompt is not None})
+
+
+@app.route("/delete_system_prompt_preset", methods=["POST"])
+def delete_system_prompt_preset():
+    data = request.get_json(force=True) or {}
+    try:
+        backend = normalize_system_prompt_backend(data.get("backend"))
+        name = normalize_system_prompt_preset_name(data.get("name"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    presets = load_system_prompt_presets()
+    preset_name, prompt = find_system_prompt_preset(presets, backend, name)
+    if prompt is None:
+        return jsonify({"ok": False, "error": "System prompt preset not found."}), 404
+    if preset_name.casefold() == PROTECTED_SYSTEM_PROMPT_PRESET_NAME.casefold():
+        return jsonify({"ok": False, "error": f'The built-in "{PROTECTED_SYSTEM_PROMPT_PRESET_NAME}" preset cannot be deleted.', "protected": True}), 403
+    presets[backend].pop(preset_name, None)
+    try:
+        save_system_prompt_presets_file(presets)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Preset delete failed: {exc}"}), 500
+    return jsonify({"ok": True, "backend": backend, "name": preset_name})
 
 
 @app.route("/joycaption_start", methods=["POST"])

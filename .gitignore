@@ -18,6 +18,17 @@ dataprep_icon_reference.png
 dataprep_mask_icon_preview.png
 settings/.dataset_forge_last_app
 settings/.dataset_forge_image_folder_handoff
+settings/category_presets.json
+settings/system_prompt_presets.json
+
+# Local development and reference files
+/videoprep_start_test.*.log
+/images/angles/
+/images/btn_card_automask.svg
+/images/btn_mask_eraser.png
+/images/btn_mask_eraser.svg
+/images/btn_switch_image.svg
+/images/btn_switch_video.svg
 
 # Installer-generated launchers
 /start.bat
