@@ -4046,6 +4046,13 @@ body.dark .topbar {
   margin: 0 12px 10px !important;
 }
 
+.joy-modal > .text-tools-help {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px 0;
+  line-height: 1.4;
+}
+
 .tool-box h3 {
   margin-bottom: 6px !important;
   font-size: 14px;
@@ -4834,48 +4841,6 @@ body.dark ::-webkit-scrollbar-thumb:hover {
   box-shadow: none;
 }
 
-.mode-stack {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  display: grid;
-  justify-items: end;
-  gap: 6px;
-  z-index: 1;
-}
-
-.mode-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.mode-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.mode-label {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 750;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  pointer-events: none;
-}
-
-.mode-icon {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
-}
-
-.top > .row:first-of-type {
-  padding-right: 190px;
-}
-
 .row {
   display: flex;
   gap: 6px;
@@ -5629,9 +5594,9 @@ body {
   padding: 10px 12px;
 }
 .app-dialog-input {
-  width: 100%;
+  width: calc(100% - 24px);
   box-sizing: border-box;
-  margin-top: 8px;
+  margin: 8px 12px 0;
 }
 .app-dialog-actions {
   justify-content: flex-end;
@@ -5668,14 +5633,6 @@ body {
 @media (max-width: 720px) {
   .top {
     position: relative;
-  }
-  .mode-stack {
-    position: static;
-    margin-bottom: 6px;
-    justify-items: end;
-  }
-  .top > .row:first-of-type {
-    padding-right: 0;
   }
   .top .range-wrap {
     width: 100%;
@@ -5720,36 +5677,33 @@ body {
 <body>
 <div class="drop-paste-overlay" id="dropPasteOverlay">Drop images to add them</div>
 <div class="top">
-  <div class="mode-stack">
-    <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_dataprep.svg" alt=""><div class="mode-label">DataPrep - Workspace mode</div></div>
-  </div>
   <div class="row" style="margin-bottom:8px;">
     <details class="top-menu">
       <summary>File</summary>
       <div class="top-menu-popover">
-        <form method="POST" action="/open_folder" id="openFolderForm"><button type="submit" title="Open an image folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.png" alt="">Open Folder</span></button></form>
-        <form method="POST" action="/add_files" id="addFilesForm"><input type="hidden" name="category" id="addFilesCategoryInput" value="Undefined"><button type="submit" title="Add image files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.png" alt="">Add Images</span></button></form>
-        <button type="button" id="openFileManagerBtn" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.png" alt="">Show Folder</span></button>
-        <button type="button" id="convertBtn" title="Convert images to PNG"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_convert_png.png" alt="">Convert to PNG</span></button>
-        <form method="GET" action="/backup" class="backup-form"><button type="submit" title="Back up image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.png" alt="">Backup</span></button></form>
+        <form method="POST" action="/open_folder" id="openFolderForm"><button type="submit" title="Open an image folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.svg" alt="">Open Folder</span></button></form>
+        <form method="POST" action="/add_files" id="addFilesForm"><input type="hidden" name="category" id="addFilesCategoryInput" value="Undefined"><button type="submit" title="Add image files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.svg" alt="">Add Images</span></button></form>
+        <button type="button" id="openFileManagerBtn" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.svg" alt="">Show Folder</span></button>
+        <button type="button" id="convertBtn" title="Convert images to PNG"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_convert_png.svg" alt="">Convert to PNG</span></button>
+        <form method="GET" action="/backup" class="backup-form"><button type="submit" title="Back up image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.svg" alt="">Backup</span></button></form>
         <form method="POST" action="/close_folder" id="closeFolderForm"><button type="submit" id="closeFolderBtn" title="Close Folder"><span class="toolbar-btn-content">Close Folder</span></button></form>
       </div>
     </details>
     <details class="top-menu">
       <summary>Edit</summary>
       <div class="top-menu-popover">
-        <button type="button" id="maskModeBtn" class="mask-mode-btn" title="Open mask tools" aria-pressed="false"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_masking.png" alt="">Masking</span></button>
-        <button type="button" id="renameAllBtn" title="Rename all image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.png" alt="">Rename</span></button>
+        <button type="button" id="maskModeBtn" class="mask-mode-btn" title="Open mask tools" aria-pressed="false"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_masking.svg" alt="">Masking</span></button>
+        <button type="button" id="renameAllBtn" title="Rename all image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.svg" alt="">Rename</span></button>
         <button type="button" id="openWatermarkModalBtn" title="Remove watermarks with an inpainting mask"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_watermark_removal.svg" alt="">Remove watermark</span></button>
       </div>
     </details>
     <details class="top-menu">
       <summary>Tools</summary>
       <div class="top-menu-popover">
-        <button type="button" id="openJoyModalBtn" title="Generate captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_caption.png" alt="">Auto-caption</span></button>
-        <button type="button" id="openToolsModalBtnInline" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.png" alt="">Text tools</span></button>
-        <button type="button" id="openSummaryModalBtn" title="Show dataset statistics"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_statistics.png" alt="">Stats</span></button>
-        <button type="button" id="openJsonModalBtn" title="Inspect and edit Ideogram 4 JSON captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_json_captions.png" alt="">JSON captions</span></button>
+        <button type="button" id="openJoyModalBtn" title="Generate captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_caption.svg" alt="">Auto-caption</span></button>
+        <button type="button" id="openToolsModalBtnInline" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.svg" alt="">Text tools</span></button>
+        <button type="button" id="openSummaryModalBtn" title="Show dataset statistics"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_statistics.svg" alt="">Stats</span></button>
+        <button type="button" id="openJsonModalBtn" title="Inspect and edit Ideogram 4 JSON captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_json_captions.svg" alt="">JSON captions</span></button>
       </div>
     </details>
     <details class="top-menu">
@@ -5762,7 +5716,7 @@ body {
     <details class="top-menu">
       <summary>Help</summary>
       <div class="top-menu-popover">
-        <button type="button" id="openHelpModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_quick_guide.png" alt="">Quick guide</span></button>
+        <button type="button" id="openHelpModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_quick_guide.svg" alt="">Quick guide</span></button>
       </div>
     </details>
   </div>
@@ -5785,8 +5739,8 @@ body {
       <label><input type="radio" name="crop_base" value="1280" {% if selected_crop_base == 1280 %}checked{% endif %}> 1280</label>
       <label><input type="radio" name="crop_base" value="1536" {% if selected_crop_base == 1536 %}checked{% endif %}> 1536</label>
     </div>
-    <button type="button" id="refreshFolderBtn" class="top-control-action" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.png" alt="">Refresh</span></button>
-    <button type="button" id="saveAllBtn" class="top-control-action" title="Save every unsaved item"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.png" alt="">Save</span></button>
+    <button type="button" id="refreshFolderBtn" class="top-control-action" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
+    <button type="button" id="saveAllBtn" class="top-control-action" title="Save every unsaved item"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.svg" alt="">Save</span></button>
   </div>
 </div>
 
@@ -5879,37 +5833,37 @@ body {
 
     <div class="card-actions">
       <button type="button" class="icon-btn mask-tool-btn mask-brush-btn active" data-index="{{ pair.index }}" data-tool="brush" title="Brush" aria-label="Brush">
-        <img src="/category_icon/btn_mask_brush.png" alt="">
+        <img src="/category_icon/btn_mask_brush.svg" alt="">
       </button>
       <button type="button" class="icon-btn mask-tool-btn mask-fill-btn" data-index="{{ pair.index }}" data-tool="fill" title="Fill" aria-label="Fill">
-        <img src="/category_icon/btn_mask_fill.png" alt="">
+        <img src="/category_icon/btn_mask_fill.svg" alt="">
       </button>
       <button type="button" class="icon-btn auto-crop-btn" data-index="{{ pair.index }}" title="Auto crop" aria-label="Auto crop">
-        <img src="/category_icon/btn_card_autocrop.png" alt="">
+        <img src="/category_icon/btn_card_autocrop.svg" alt="">
       </button>
       <button type="button" class="icon-btn ratio-lock-btn" data-index="{{ pair.index }}" title="Aspect ratio lock" aria-label="Aspect ratio lock">
-        <img src="/category_icon/btn_card_ratio_lock.png" alt="">
+        <img src="/category_icon/btn_card_ratio_lock.svg" alt="">
       </button>
       <button type="button" class="icon-btn undo-btn" data-index="{{ pair.index }}" title="Undo" aria-label="Undo">
-        <img src="/category_icon/btn_card_undo.png" alt="">
+        <img src="/category_icon/btn_card_undo.svg" alt="">
       </button>
       <button type="button" class="icon-btn redo-btn" data-index="{{ pair.index }}" title="Redo" aria-label="Redo">
-        <img src="/category_icon/btn_card_redo.png" alt="">
+        <img src="/category_icon/btn_card_redo.svg" alt="">
       </button>
       <button type="button" class="icon-btn flip-h-btn" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" title="Flip horizontally" aria-label="Flip horizontally">
-        <img src="/category_icon/btn_card_flip_h.png" alt="">
+        <img src="/category_icon/btn_card_flip_h.svg" alt="">
       </button>
       <button type="button" class="icon-btn flip-v-btn" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" title="Flip vertically" aria-label="Flip vertically">
-        <img src="/category_icon/btn_card_flip_v.png" alt="">
+        <img src="/category_icon/btn_card_flip_v.svg" alt="">
       </button>
       <button type="button" class="icon-btn automask-btn" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" title="Auto mask" aria-label="Auto mask">
-        <img src="/category_icon/btn_card_automask.png" alt="">
+        <img src="/category_icon/btn_masking.svg" alt="">
       </button>
-      <button type="button" class="icon-btn watermark-apply-btn" data-index="{{ pair.index }}" title="Apply" aria-label="Apply">
-        <img src="/category_icon/btn_watermark_removal.svg" alt="">
+      <button type="button" class="icon-btn watermark-apply-btn" data-index="{{ pair.index }}" title="Remove" aria-label="Remove">
+        <img src="/category_icon/btn_card_watermark_remove.svg" alt="">
       </button>
       <button type="button" class="icon-btn save-btn" id="save-btn-{{ pair.index }}" data-index="{{ pair.index }}" title="Save" aria-label="Save">
-        <img src="/category_icon/btn_card_save.png" alt="">
+        <img src="/category_icon/btn_card_save.svg" alt="">
       </button>
     </div>
 
@@ -6442,6 +6396,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
       <h3 id="toolsModalTitle">Text tools</h3>
       <button type="button" class="joy-close-btn" id="closeToolsModalBtn">×</button>
     </div>
+    <p class="small text-tools-help">Text tools update the cards only. Use a card Save button or Save all to write the changes; Undo and Reset discard them.</p>
 
     <div class="joy-grid">
       <div class="tool-box" style="margin:0;">
@@ -6546,7 +6501,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
       <p>Open <b>Edit &gt; Masking</b> to configure automatic masks or enable masking mode. With Brush selected, the left mouse button paints the mask and the right mouse button erases it. Fill supports the same left and right button behavior.</p>
 
       <h4>Captions and text</h4>
-      <p><b>Tools &gt; Auto-caption</b> generates captions, <b>Edit &gt; Text tools</b> performs batch text changes, and <b>Tools &gt; JSON captions</b> opens the Ideogram JSON editor.</p>
+      <p><b>Tools &gt; Auto-caption</b> generates captions, <b>Edit &gt; Text tools</b> applies batch text changes to the cards, and <b>Tools &gt; JSON captions</b> opens the Ideogram JSON editor. Text tools changes are written only when you use a card Save button or Save all; Undo and Reset discard them.</p>
       <p><b>Tools &gt; Remove watermark</b> opens a temporary inpainting editor. Paint the watermark, apply the preview on its card, and use Save to write the result.</p>
 
       <h4>Application mode</h4>
@@ -6718,8 +6673,13 @@ function showAppDialog({ title = 'Message', message = '', mode = 'alert', defaul
     const ok = () => finish(isPrompt ? appDialogInput.value : true);
     const cancel = () => finish(isConfirm ? false : (isPrompt ? null : true));
     const keydown = event => {
-      if (event.key === 'Escape') cancel();
-      if (event.key === 'Enter' && (event.ctrlKey || !isPrompt)) ok();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        cancel();
+      } else if (event.key === 'Enter' && !event.isComposing) {
+        event.preventDefault();
+        ok();
+      }
     };
     appDialogOkBtn.addEventListener('click', ok);
     appDialogCancelBtn.addEventListener('click', cancel);
@@ -7470,12 +7430,12 @@ function buildCategoryWindow(category, index) {
   const tools = document.createElement('div');
   tools.className = 'category-window-tools';
   const toolButtons = [
-    ['text', 'Text', 'btn_text_tools.png', () => openToolsModal(category.name)],
-    ['auto-crop', 'Auto crop', 'btn_auto_crop_all.png', () => autoCropCategory(category.name)],
-    ['auto-mask', 'Auto mask', 'btn_card_automask.png', () => autoMaskCategory(category.name)],
-    ['reset', 'Reset', 'btn_reset_all.png', () => resetCategoryUnsavedChanges(category.name)],
-    ['save', 'Save', 'btn_save_all.png', () => saveCategoryCards(category.name)],
-    ['rename', 'Rename', 'btn_rename_all.png', () => renameCategoryPairs(category.name)],
+    ['text', 'Text', 'btn_text_tools.svg', () => openToolsModal(category.name)],
+    ['auto-crop', 'Auto crop', 'btn_auto_crop_all.svg', () => autoCropCategory(category.name)],
+    ['auto-mask', 'Auto mask', 'btn_masking.svg', () => autoMaskCategory(category.name)],
+    ['reset', 'Reset', 'btn_reset_all.svg', () => resetCategoryUnsavedChanges(category.name)],
+    ['save', 'Save', 'btn_save_all.svg', () => saveCategoryCards(category.name)],
+    ['rename', 'Rename', 'btn_rename_all.svg', () => renameCategoryPairs(category.name)],
   ];
   toolButtons.forEach(([key, label, icon, handler]) => {
     const btn = document.createElement('button');
@@ -10834,8 +10794,8 @@ async function renameCategoryPairs(category) {
 }
 
 async function confirmReplace() {
-  const scope = toolsCategoryScope ? `the ${toolsCategoryScope} category` : 'all caption files in the opened folder';
-  return appConfirm(`Apply this search/replace to ${scope}?`);
+  const scope = toolsCategoryScope ? `the ${toolsCategoryScope} category` : 'all caption cards';
+  return appConfirm(`Apply this search/replace to ${scope}? Changes will remain unsaved until you use Save.`);
 }
 
 document.querySelectorAll('.pair-card').forEach(card => attachCardEventListeners(card));
@@ -11066,13 +11026,14 @@ function closeMaskModal() {
 }
 
 function getMaskSettings() {
+  const opacityValue = Number.parseFloat(document.getElementById('mask_opacity')?.value);
   return {
     model: document.getElementById('mask_model')?.value || MASK_DEFAULTS.model,
     scope: document.getElementById('mask_scope')?.value || MASK_DEFAULTS.scope,
     post_process: !!document.getElementById('mask_post_process')?.checked,
     expand_pixels: Math.max(0, Math.min(256, Math.round(parseFloat(document.getElementById('mask_expand_pixels')?.value || '0') || 0))),
     feather_pixels: Math.max(0, Math.min(256, Math.round(parseFloat(document.getElementById('mask_feather_pixels')?.value || '0') || 0))),
-    opacity: String(Math.max(0, Math.min(100, Math.round(parseFloat(document.getElementById('mask_opacity')?.value || MASK_DEFAULTS.opacity) || Number(MASK_DEFAULTS.opacity))))),
+    opacity: String(Math.max(0, Math.min(100, Math.round(Number.isFinite(opacityValue) ? opacityValue : Number(MASK_DEFAULTS.opacity))))),
     auto_scroll: !!document.getElementById('mask_auto_scroll')?.checked,
   };
 }
@@ -12488,49 +12449,87 @@ function makeModalDraggable(backdrop) {
 
 [joyModalBackdrop, maskModalBackdrop, summaryModalBackdrop, toolsModalBackdrop, jsonModalBackdrop, helpModalBackdrop, appDialogBackdrop].forEach(makeModalDraggable);
 
+function textToolCaptionTextareas() {
+  return Array.from(document.querySelectorAll('.caption-textarea')).filter(textarea => {
+    if (!toolsCategoryScope) return true;
+    return textarea.closest('.pair-card')?.dataset.category === toolsCategoryScope;
+  });
+}
+
+function compileTextToolRegex(pattern) {
+  const source = String(pattern || '')
+    .replaceAll('\\A', '(?<![\\s\\S])')
+    .replaceAll('\\Z', '(?![\\s\\S])');
+  return new RegExp(source, 'gms');
+}
+
+function setTextToolCaptionValue(textarea, value) {
+  const next = String(value ?? '');
+  if (!textarea || textarea.value === next) return false;
+  textarea.value = next;
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  suppressBeforeUnload = false;
+  return true;
+}
+
+function replaceTextToolCaptions(matchString, replaceWith, useRegex) {
+  let occurrences = 0;
+  let changedCards = 0;
+  const regex = useRegex ? compileTextToolRegex(matchString) : null;
+  textToolCaptionTextareas().forEach(textarea => {
+    const current = textarea.value;
+    let next = current;
+    if (regex) {
+      regex.lastIndex = 0;
+      next = current.replace(regex, () => {
+        occurrences += 1;
+        return replaceWith;
+      });
+    } else {
+      occurrences += current.split(matchString).length - 1;
+      next = current.split(matchString).join(replaceWith);
+    }
+    if (setTextToolCaptionValue(textarea, next)) changedCards += 1;
+  });
+  return { occurrences, changedCards };
+}
+
+function findTextToolMatches(pattern) {
+  const matches = [];
+  textToolCaptionTextareas().forEach(textarea => {
+    const regex = compileTextToolRegex(pattern);
+    const card = textarea.closest('.pair-card');
+    for (const match of textarea.value.matchAll(regex)) {
+      matches.push({
+        img_name: textarea.dataset.img || '',
+        category: card?.dataset.category || '',
+        start: match.index || 0,
+        end: (match.index || 0) + String(match[0] || '').length,
+      });
+    }
+  });
+  return matches;
+}
+
 replaceForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
+  suppressBeforeUnload = false;
 
   const ok = await confirmReplace();
   if (!ok) return;
 
   const formData = new FormData(replaceForm);
-
   try {
-    if (toolsResult) toolsResult.textContent = "Replacing...";
-    const res = await fetch("/replace_all", {
-      method: "POST",
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-      body: formData
-    });
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) {
-      if (toolsResult) toolsResult.textContent = data.error || "Replace failed.";
-      return;
+    const matchString = String(formData.get('match_string') || '');
+    const replaceWith = String(formData.get('replace_with') || '');
+    const useRegex = formData.get('use_regex') === '1';
+    if (!matchString) throw new Error('Search string cannot be empty.');
+    const result = replaceTextToolCaptions(matchString, replaceWith, useRegex);
+    if (toolsResult) {
+      toolsResult.textContent =
+        `Replaced ${result.occurrences} occurrence(s) on ${result.changedCards} card(s).\n` +
+        'Changes are unsaved. Use a card Save button or Save all to write them to disk.';
     }
-
-    if (toolsResult) toolsResult.textContent = data.message || "Replace complete.";
-
-    const captionsRes = await fetch("/captions_json", {
-      headers: { "X-Requested-With": "XMLHttpRequest" }
-    });
-    const captionsData = await captionsRes.json();
-
-    if (captionsRes.ok && captionsData.ok && Array.isArray(captionsData.pairs)) {
-      const byName = new Map(captionsData.pairs.map(p => [p.img_name, p.text]));
-      document.querySelectorAll('.caption-textarea').forEach(ta => {
-        const imgName = ta.dataset.img;
-        if (byName.has(imgName)) {
-          ta.value = byName.get(imgName);
-          ta.dataset.original = byName.get(imgName);
-          const index = parseInt(ta.dataset.index, 10);
-          markUnsaved(index);
-        }
-      });
-    }
-
-    openToolsModal();
   } catch (err) {
     if (toolsResult) toolsResult.textContent = `Replace failed: ${err}`;
   }
@@ -12577,31 +12576,21 @@ countNextMatchBtn?.addEventListener('click', goToNextCountMatch);
 
 countForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
+  suppressBeforeUnload = false;
 
   const formData = new FormData(countForm);
 
   try {
     resetCountMatches();
-    if (toolsResult) toolsResult.textContent = "Counting...";
-    const res = await fetch("/count_string", {
-      method: "POST",
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-      body: formData
-    });
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) {
-      if (toolsResult) toolsResult.textContent = data.error || "Count failed.";
-      return;
-    }
-
-    countMatches = Array.isArray(data.matches) ? data.matches : [];
+    const pattern = String(formData.get('count_string') || '');
+    if (!pattern) throw new Error('Count regex cannot be empty.');
+    countMatches = findTextToolMatches(pattern);
     countMatchCursor = -1;
     if (countNextMatchBtn) countNextMatchBtn.disabled = !countMatches.length;
     if (toolsResult) {
       toolsResult.textContent = countMatches.length
-        ? `${data.message || "Count complete."}\nUse Go to next to jump through matches.`
-        : (data.message || "Count complete.");
+        ? `Found ${countMatches.length} occurrence(s) in the current card text.\nUse Go to next to jump through matches.`
+        : 'Found 0 occurrences in the current card text.';
     }
   } catch (err) {
     resetCountMatches();
@@ -12612,44 +12601,23 @@ countForm?.addEventListener("submit", async (e) => {
 
 triggerForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
+  suppressBeforeUnload = false;
 
   const formData = new FormData(triggerForm);
 
   try {
-    if (toolsResult) toolsResult.textContent = "Adding trigger word...";
-    const res = await fetch("/add_triggerword_all", {
-      method: "POST",
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-      body: formData
+    const triggerWord = String(formData.get('trigger_word') || '');
+    if (!triggerWord) throw new Error('Trigger word cannot be empty.');
+    let changedCards = 0;
+    textToolCaptionTextareas().forEach(textarea => {
+      const next = `${triggerWord}${String(textarea.value || '').trim()}`;
+      if (setTextToolCaptionValue(textarea, next)) changedCards += 1;
     });
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) {
-      if (toolsResult) toolsResult.textContent = data.error || "Add trigger word failed.";
-      return;
+    if (toolsResult) {
+      toolsResult.textContent =
+        `Added the trigger word to ${changedCards} card(s).\n` +
+        'Changes are unsaved. Use a card Save button or Save all to write them to disk.';
     }
-
-    if (toolsResult) toolsResult.textContent = data.message || "Add trigger word complete.";
-
-    const captionsRes = await fetch("/captions_json", {
-      headers: { "X-Requested-With": "XMLHttpRequest" }
-    });
-    const captionsData = await captionsRes.json();
-
-    if (captionsRes.ok && captionsData.ok && Array.isArray(captionsData.pairs)) {
-      const byName = new Map(captionsData.pairs.map(p => [p.img_name, p.text]));
-      document.querySelectorAll('.caption-textarea').forEach(ta => {
-        const imgName = ta.dataset.img;
-        if (byName.has(imgName)) {
-          ta.value = byName.get(imgName);
-          ta.dataset.original = byName.get(imgName);
-          const index = parseInt(ta.dataset.index, 10);
-          markUnsaved(index);
-        }
-      });
-    }
-
-    openToolsModal();
   } catch (err) {
     if (toolsResult) toolsResult.textContent = `Add trigger word failed: ${err}`;
   }

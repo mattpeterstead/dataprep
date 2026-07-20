@@ -59,9 +59,9 @@ echo =================================
 >> "%LOG%" echo Checking app files
 >> "%LOG%" echo =================================
 
-if not exist "imageprep.py" (
-  echo [ERROR] imageprep.py not found in %CD%
-  >> "%LOG%" echo [ERROR] imageprep.py not found in %CD%
+if not exist "imageprep_simple.py" (
+  echo [ERROR] imageprep_simple.py not found in %CD%
+  >> "%LOG%" echo [ERROR] imageprep_simple.py not found in %CD%
   goto :fail
 )
 
@@ -460,8 +460,10 @@ setlocal EnableExtensions
 
 set "ROOT=%~dp0"
 set "PYTHON=%ROOT%.venv\Scripts\python.exe"
-set "SETTINGS_DIR=%ROOT%settings"
-set "LAST_FILE=%SETTINGS_DIR%\.dataset_forge_last_app"
+set "APP=%ROOT%imageprep_simple.py"
+set "URL=http://127.0.0.1:5000/"
+set "PORT=5000"
+set "LABEL=Image mode"
 
 pushd "%ROOT%" >nul 2>&1
 if errorlevel 1 (
@@ -471,26 +473,6 @@ if errorlevel 1 (
   echo.
   pause
   exit /b 1
-)
-
-if not exist "%SETTINGS_DIR%" mkdir "%SETTINGS_DIR%" >nul 2>&1
-
-set "MODE=simple"
-if exist "%LAST_FILE%" (
-  set /p MODE=<"%LAST_FILE%"
-)
-if /i not "%MODE%"=="image" if /i not "%MODE%"=="simple" set "MODE=simple"
-
-if /i "%MODE%"=="simple" (
-  set "APP=%ROOT%imageprep_simple.py"
-  set "URL=http://127.0.0.1:5000/"
-  set "PORT=5000"
-  set "LABEL=Default mode"
-) else (
-  set "APP=%ROOT%imageprep.py"
-  set "URL=http://127.0.0.1:5000/"
-  set "PORT=5000"
-  set "LABEL=Workspace mode"
 )
 
 title DataPrep - %LABEL%
@@ -526,8 +508,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-
->"%LAST_FILE%" echo %MODE%
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "if (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue) { exit 0 } exit 1" >nul 2>&1
 if "%ERRORLEVEL%"=="0" (

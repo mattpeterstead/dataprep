@@ -2379,34 +2379,6 @@ body{margin:0;padding-bottom:32px;background:var(--bg);color:var(--text);font-si
   padding:8px 12px;
   box-shadow:0 1px 0 rgba(255,255,255,.03);
 }
-.mode-stack{
-  position:absolute;
-  top:10px;
-  right:12px;
-  display:grid;
-  justify-items:end;
-  gap:6px;
-  z-index:1;
-}
-.mode-head{
-  display:inline-flex;
-  align-items:center;
-  gap:7px;
-}
-.mode-label{
-  color:var(--muted);
-  font-size:12px;
-  font-weight:750;
-  text-transform:uppercase;
-  letter-spacing:.04em;
-  pointer-events:none;
-}
-.mode-icon{
-  width:16px;
-  height:16px;
-  object-fit:contain;
-}
-.top > .row:first-of-type{padding-right:116px}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .top-controls{margin-top:2px}
 .top .top-controls .top-control-action{
@@ -3470,8 +3442,6 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
 @media (max-width: 760px){
   .grid{grid-template-columns:1fr}
   .top{position:relative}
-  .mode-stack{position:static;margin-bottom:6px;justify-items:end}
-  .top > .row:first-of-type{padding-right:0}
   .two{grid-template-columns:1fr}
 }
 </style>
@@ -3479,39 +3449,36 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
 <body>
 <div class="drop-paste-overlay" id="dropPasteOverlay">Drop videos to add them</div>
 <div class="top">
-  <div class="mode-stack">
-    <div class="mode-head"><img class="mode-icon" src="/category_icon/btn_dataprep.svg" alt=""><div class="mode-label">DataPrep - Video</div></div>
-  </div>
   <div class="row" style="margin-bottom:8px;">
     <details class="top-menu">
       <summary>File</summary>
       <div class="top-menu-popover">
-        <form method="post" action="/open_folder" id="openFolderForm"><button type="submit" title="Open a video folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.png" alt="">Open Folder</span></button></form>
-        <form method="post" action="/add_files"><button type="submit" title="Add video files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.png" alt="">Add Videos</span></button></form>
-        <button id="openFolderInExplorerBtn" type="button" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.png" alt="">Show Folder</span></button>
-        <form method="post" action="/backup" class="backup-form"><button type="submit" title="Back up video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.png" alt="">Backup</span></button></form>
+        <form method="post" action="/open_folder" id="openFolderForm"><button type="submit" title="Open a video folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.svg" alt="">Open Folder</span></button></form>
+        <form method="post" action="/add_files"><button type="submit" title="Add video files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.svg" alt="">Add Videos</span></button></form>
+        <button id="openFolderInExplorerBtn" type="button" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.svg" alt="">Show Folder</span></button>
+        <form method="post" action="/backup" class="backup-form"><button type="submit" title="Back up video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.svg" alt="">Backup</span></button></form>
         <form method="post" action="/close_folder"><button type="submit" title="Close Folder"><span class="toolbar-btn-content">Close Folder</span></button></form>
       </div>
     </details>
     <details class="top-menu">
       <summary>Edit</summary>
       <div class="top-menu-popover">
-        <button type="button" id="renameAllBtn" title="Rename all video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.png" alt="">Rename</span></button>
-        <button id="textToolsBtn" type="button" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.png" alt="">Text tools</span></button>
+        <button type="button" id="renameAllBtn" title="Rename all video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.svg" alt="">Rename</span></button>
+        <button id="textToolsBtn" type="button" title="Batch edit caption text"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_text_tools.svg" alt="">Text tools</span></button>
       </div>
     </details>
     <details class="top-menu">
       <summary>Tools</summary>
       <div class="top-menu-popover">
-        <button id="captionStubBtn" type="button" title="Generate captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_caption.png" alt="">Auto-caption</span></button>
-        <button type="button" id="openStatsModalBtn" title="Show dataset statistics"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_statistics.png" alt="">Stats</span></button>
-        <button id="settingsBtn" type="button" title="Video settings"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_settings.png" alt="">Settings</span></button>
+        <button id="captionStubBtn" type="button" title="Generate captions"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_caption.svg" alt="">Auto-caption</span></button>
+        <button type="button" id="openStatsModalBtn" title="Show dataset statistics"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_statistics.svg" alt="">Stats</span></button>
+        <button id="settingsBtn" type="button" title="Video settings"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_settings.svg" alt="">Settings</span></button>
       </div>
     </details>
     <details class="top-menu">
       <summary>Help</summary>
       <div class="top-menu-popover">
-        <button type="button" id="openHelpModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_quick_guide.png" alt="">Quick guide</span></button>
+        <button type="button" id="openHelpModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_quick_guide.svg" alt="">Quick guide</span></button>
       </div>
     </details>
   </div>
@@ -3539,10 +3506,10 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
       <label><input type="radio" name="crop_base" value="1280"> 1280</label>
       <label><input type="radio" name="crop_base" value="1536"> 1536</label>
     </div>
-    <button id="refreshFolderBtn" type="button" class="top-control-action" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.png" alt="">Refresh</span></button>
-    <button type="button" id="autoCropAllBtn" class="top-control-action" title="Auto crop every video"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_auto_crop_all.png" alt="">Auto crop</span></button>
-    <button type="button" id="resetAllBtn" class="top-control-action" title="Reset unsaved edits"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_reset_all.png" alt="">Reset</span></button>
-    <button type="button" id="saveAllBtn" class="top-control-action" title="Save all changed video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.png" alt="">Save</span></button>
+    <button id="refreshFolderBtn" type="button" class="top-control-action" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
+    <button type="button" id="autoCropAllBtn" class="top-control-action" title="Auto crop every video"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_auto_crop_all.svg" alt="">Auto crop</span></button>
+    <button type="button" id="resetAllBtn" class="top-control-action" title="Reset unsaved edits"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_reset_all.svg" alt="">Reset</span></button>
+    <button type="button" id="saveAllBtn" class="top-control-action" title="Save all changed video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.svg" alt="">Save</span></button>
   </div>
 </div>
 
@@ -3589,17 +3556,17 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
             <span class="media-icon media-stop" aria-hidden="true"></span>
           </button>
           <button class="small slice-btn icon-only-btn" title="Slice" aria-label="Slice">
-            <img class="card-btn-icon" src="/category_icon/btn_card_slice.png" alt="">
+            <img class="card-btn-icon" src="/category_icon/btn_card_slice.svg" alt="">
           </button>
           <button class="small flip-h-btn icon-only-btn transform-btn" title="Flip horizontally" aria-label="Flip horizontally">
-            <img class="card-btn-icon" src="/category_icon/btn_card_flip_h.png" alt="">
+            <img class="card-btn-icon" src="/category_icon/btn_card_flip_h.svg" alt="">
           </button>
           <button class="small flip-v-btn icon-only-btn transform-btn" title="Flip vertically" aria-label="Flip vertically">
-            <img class="card-btn-icon" src="/category_icon/btn_card_flip_v.png" alt="">
+            <img class="card-btn-icon" src="/category_icon/btn_card_flip_v.svg" alt="">
           </button>
           <button class="small rotate-90-btn transform-btn" title="Rotate 90 degrees" aria-label="Rotate 90 degrees">90°</button>
           <button class="small save-combined-btn icon-only-btn" title="Save video and caption" aria-label="Save video and caption">
-            <img class="card-btn-icon" src="/category_icon/btn_card_save.png" alt="">
+            <img class="card-btn-icon" src="/category_icon/btn_card_save.svg" alt="">
           </button>
         </div>
 
@@ -3660,6 +3627,7 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
       <button type="button" class="modal-close-btn" id="closeTextModalBtn" aria-label="Close">×</button>
     </div>
     <div class="modal-body">
+      <p class="small">Text tools update the cards only. Use a card Save button or Save all to write the changes; Reset discards them.</p>
       <div class="joy-grid">
         <div class="tool-box" style="margin:0;">
           <h3>Replace in captions</h3>
@@ -4173,8 +4141,13 @@ function showAppDialog({ title = 'Message', message = '', mode = 'alert', defaul
     const ok = () => finish(isPrompt ? appDialogInput.value : true);
     const cancel = () => finish(isConfirm ? false : (isPrompt ? null : true));
     const keydown = event => {
-      if (event.key === 'Escape') cancel();
-      if (event.key === 'Enter' && (event.ctrlKey || !isPrompt)) ok();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        cancel();
+      } else if (event.key === 'Enter' && !event.isComposing) {
+        event.preventDefault();
+        ok();
+      }
     };
     appDialogOkBtn.addEventListener('click', ok);
     appDialogCancelBtn.addEventListener('click', cancel);
@@ -6807,32 +6780,58 @@ function hideRegexTooltip() {
   regexTooltipEl?.classList.remove('open');
 }
 
-function refreshCaptionTextareas(pairs) {
-  const byName = new Map((pairs || []).map(p => [p.name, p.text]));
-  document.querySelectorAll('.card').forEach(card => {
-    const name = card.dataset.name;
-    const caption = card.querySelector('.caption');
-    if (!caption || !byName.has(name)) return;
-    const value = byName.get(name) || '';
-    caption.value = value;
-    caption.dataset.original = value;
-    caption.classList.remove('unsaved-caption');
-    updateCaptionStats(caption);
-  });
+function textToolCaptionTextareas() {
+  return Array.from(document.querySelectorAll('.caption'));
 }
 
-async function reloadCaptionsIntoCards() {
-  const captionsRes = await fetch('/captions_json', {
-    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+function compileTextToolRegex(pattern) {
+  const source = String(pattern || '')
+    .replaceAll('\\A', '(?<![\\s\\S])')
+    .replaceAll('\\Z', '(?![\\s\\S])');
+  return new RegExp(source, 'gms');
+}
+
+function setTextToolCaptionValue(textarea, value) {
+  const next = String(value ?? '');
+  if (!textarea || textarea.value === next) return false;
+  textarea.value = next;
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+}
+
+function replaceTextToolCaptions(matchString, replaceWith, useRegex) {
+  let occurrences = 0;
+  let changedCards = 0;
+  const regex = useRegex ? compileTextToolRegex(matchString) : null;
+  textToolCaptionTextareas().forEach(textarea => {
+    const current = textarea.value;
+    let next = current;
+    if (regex) {
+      regex.lastIndex = 0;
+      next = current.replace(regex, () => {
+        occurrences += 1;
+        return replaceWith;
+      });
+    } else {
+      occurrences += current.split(matchString).length - 1;
+      next = current.split(matchString).join(replaceWith);
+    }
+    if (setTextToolCaptionValue(textarea, next)) changedCards += 1;
   });
-  const captionsData = await captionsRes.json();
-  if (captionsRes.ok && captionsData.ok && Array.isArray(captionsData.pairs)) {
-    refreshCaptionTextareas(captionsData.pairs);
-  }
+  return { occurrences, changedCards };
+}
+
+function countTextToolMatches(pattern) {
+  let count = 0;
+  textToolCaptionTextareas().forEach(textarea => {
+    const regex = compileTextToolRegex(pattern);
+    count += Array.from(textarea.value.matchAll(regex)).length;
+  });
+  return count;
 }
 
 async function confirmReplace() {
-  return appConfirm('Apply this search/replace to all caption files in the opened folder?');
+  return appConfirm('Apply this search/replace to all caption cards? Changes will remain unsaved until you use Save.');
 }
 
 loadToolsSettings();
@@ -6853,25 +6852,17 @@ replaceForm?.addEventListener('submit', async (e) => {
   if (!ok) return;
   const formData = new FormData(replaceForm);
   try {
-    if (toolsResult) toolsResult.textContent = 'Replacing...';
-    showAppBusy('Replacing captions...', 'Text tools');
-    const res = await fetch('/replace_all', {
-      method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: formData
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      hideAppBusy();
-      if (toolsResult) toolsResult.textContent = data.error || 'Replace failed.';
-      return;
+    const matchString = String(formData.get('match_string') || '');
+    const replaceWith = String(formData.get('replace_with') || '');
+    const useRegex = formData.get('use_regex') === '1';
+    if (!matchString) throw new Error('Search string cannot be empty.');
+    const result = replaceTextToolCaptions(matchString, replaceWith, useRegex);
+    if (toolsResult) {
+      toolsResult.textContent =
+        `Replaced ${result.occurrences} occurrence(s) on ${result.changedCards} card(s).\n` +
+        'Changes are unsaved. Use a card Save button or Save all to write them to disk.';
     }
-    if (toolsResult) toolsResult.textContent = data.message || 'Replace complete.';
-    await reloadCaptionsIntoCards();
-    hideAppBusy();
-    openToolsModal();
   } catch (err) {
-    hideAppBusy();
     if (toolsResult) toolsResult.textContent = `Replace failed: ${err}`;
   }
 });
@@ -6880,23 +6871,11 @@ countForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const formData = new FormData(countForm);
   try {
-    if (toolsResult) toolsResult.textContent = 'Counting...';
-    showAppBusy('Counting matches...', 'Text tools');
-    const res = await fetch('/count_string', {
-      method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: formData
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      hideAppBusy();
-      if (toolsResult) toolsResult.textContent = data.error || 'Count failed.';
-      return;
-    }
-    if (toolsResult) toolsResult.textContent = data.message || 'Count complete.';
-    hideAppBusy();
+    const pattern = String(formData.get('count_string') || '');
+    if (!pattern) throw new Error('Count regex cannot be empty.');
+    const count = countTextToolMatches(pattern);
+    if (toolsResult) toolsResult.textContent = `Found ${count} occurrence(s) in the current card text.`;
   } catch (err) {
-    hideAppBusy();
     if (toolsResult) toolsResult.textContent = `Count failed: ${err}`;
   }
 });
@@ -6905,25 +6884,19 @@ triggerForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const formData = new FormData(triggerForm);
   try {
-    if (toolsResult) toolsResult.textContent = 'Adding trigger word...';
-    showAppBusy('Adding trigger word...', 'Text tools');
-    const res = await fetch('/add_triggerword_all', {
-      method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: formData
+    const triggerWord = String(formData.get('trigger_word') || '');
+    if (!triggerWord) throw new Error('Trigger word cannot be empty.');
+    let changedCards = 0;
+    textToolCaptionTextareas().forEach(textarea => {
+      const next = `${triggerWord}${String(textarea.value || '').trim()}`;
+      if (setTextToolCaptionValue(textarea, next)) changedCards += 1;
     });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      hideAppBusy();
-      if (toolsResult) toolsResult.textContent = data.error || 'Add trigger word failed.';
-      return;
+    if (toolsResult) {
+      toolsResult.textContent =
+        `Added the trigger word to ${changedCards} card(s).\n` +
+        'Changes are unsaved. Use a card Save button or Save all to write them to disk.';
     }
-    if (toolsResult) toolsResult.textContent = data.message || 'Add trigger word complete.';
-    await reloadCaptionsIntoCards();
-    hideAppBusy();
-    openToolsModal();
   } catch (err) {
-    hideAppBusy();
     if (toolsResult) toolsResult.textContent = `Add trigger word failed: ${err}`;
   }
 });

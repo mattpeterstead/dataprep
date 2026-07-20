@@ -75,7 +75,7 @@ log "Using: $PY_CMD"
 
 section "Checking app files"
 
-[[ -f "$ROOT/imageprep.py" ]] || { log "[ERROR] imageprep.py not found in $ROOT"; fail; }
+[[ -f "$ROOT/imageprep_simple.py" ]] || { log "[ERROR] imageprep_simple.py not found in $ROOT"; fail; }
 [[ -f "$ROOT/videoprep.py" ]] || { log "[ERROR] videoprep.py not found in $ROOT"; fail; }
 [[ -f "$REQ" ]] || { log "[ERROR] requirements.txt not found in $ROOT"; fail; }
 
@@ -344,42 +344,15 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 PYTHON="$ROOT/.venv/bin/python"
-SETTINGS_DIR="$ROOT/settings"
-LAST_FILE="$SETTINGS_DIR/.dataset_forge_last_app"
-
-mkdir -p "$SETTINGS_DIR"
+APP="$ROOT/imageprep_simple.py"
+URL="http://127.0.0.1:5000/"
+PORT="5000"
+LABEL="Image mode"
 
 print_tk_help() {
   echo "Install the Tk bindings for your Python version with your distribution package manager."
   echo "Package names vary by distribution. Common names include: python3-tk, python3-tkinter, python-tkinter, tk."
 }
-
-MODE="simple"
-if [[ -f "$LAST_FILE" ]]; then
-  MODE="$(tr -d '\r\n' < "$LAST_FILE")"
-fi
-
-case "${MODE,,}" in
-  simple)
-    APP="$ROOT/imageprep_simple.py"
-    URL="http://127.0.0.1:5000/"
-    PORT="5000"
-    LABEL="Default mode"
-    ;;
-  image)
-    APP="$ROOT/imageprep.py"
-    URL="http://127.0.0.1:5000/"
-    PORT="5000"
-    LABEL="Workspace mode"
-    ;;
-  *)
-    MODE="simple"
-    APP="$ROOT/imageprep_simple.py"
-    URL="http://127.0.0.1:5000/"
-    PORT="5000"
-    LABEL="Default mode"
-    ;;
-esac
 
 if [[ ! -x "$PYTHON" ]]; then
   echo
@@ -419,8 +392,6 @@ then
   echo "Run ./install.sh and allow it to recreate the virtual environment."
   exit 1
 fi
-
-echo "$MODE" > "$LAST_FILE"
 
 if "$PYTHON" - "$PORT" <<'PY' >/dev/null 2>&1
 import socket, sys
