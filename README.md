@@ -147,6 +147,8 @@ Image modes support:
 - statistics
 - batch rename, save, reset, convert, backup, and refresh actions
 
+Auto-caption shows the intended use for every backend: JoyCaption for detailed natural-language training captions, WD-14 for concise Danbooru-style anime and illustration tags, Qwen3-VL for prompt-guided character, scene, and structured JSON captions, and External API for a configurable remote vision model.
+
 Using lossless PNG files is recommended for image preparation. Repeatedly saving images in lossy formats, such as JPEG or lossy WebP/AVIF, can accumulate compression artifacts and reduce image quality further. When non-PNG images are imported by paste or drag-and-drop, the app can convert them to uncompressed PNG.
 
 ### Categories and statistics
@@ -163,7 +165,7 @@ Text tools apply batch caption changes to the cards without immediately writing 
 
 ### Ideogram 4 JSON captions
 
-Open **Tools > JSON captions** to edit Ideogram 4 caption sidecars with structured fields for the high-level description, style, background, object elements, and text elements. Elements can be added or removed independently. The separate **BBOXes** section adds, removes, and edits each element's normalized `[y_min, x_min, y_max, x_max]` coordinates in the range 0–1000; boxes can also be moved and resized directly over the image preview. **Raw JSON** remains available for advanced editing, and all views stay synchronized until the caption is validated and saved.
+Open **Tools > JSON captions** to edit Ideogram 4 caption sidecars with structured fields for the high-level description, style, background, object elements, and text elements. Elements can be added or removed independently. Color palettes are shown as clickable swatches: select a swatch to edit or remove it, or use **+** to add a color. The separate **BBOXes** section adds, removes, and edits each element's normalized `[y_min, x_min, y_max, x_max]` coordinates in the range 0–1000; boxes can also be moved and resized directly over the image preview. Use **Edit raw** for advanced JSON text editing, then apply the working copy with its Save button before validating or saving the caption file.
 
 Ideogram JSON caption generation is deterministic with temperature `0`. Its visible **Max tokens** value is respected directly and defaults to `768`; it is no longer silently increased during generation. The captioning log reports image preparation time, model-input preparation time, generation time, generated token count, and token rate.
 
@@ -187,7 +189,7 @@ Automatic masking uses REMBG where available. Model files may be downloaded on f
 
 The image workflow provides **Tools > Remove watermark**. Enable the watermark editor, paint over the unwanted watermark with the existing Brush or Fill tools, and press the watermark removal button on the card. The generated result remains an unsaved preview until the card or toolbar **Save** button is used.
 
-Batch removal analyzes each image separately with Qwen3-VL, so watermark position and appearance may differ between images. A manually painted watermark mask takes priority for its image. Images without a sufficiently confident detection are skipped, and successful results remain unsaved previews until they are accepted with a card **Save** button or **Save all**.
+Batch removal analyzes each image separately with Qwen3-VL, so watermark position and appearance may differ between images. It is experimental and can be unreliable; remove watermarks manually whenever possible. A manually painted watermark mask takes priority for its image. Images without a sufficiently confident detection are skipped, and successful results remain unsaved previews until they are accepted with a card **Save** button or **Save all**.
 
 The watermark removal mask is temporary and is kept separate from the training masks in the dataset's `mask` folder. Available backends are:
 

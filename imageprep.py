@@ -4163,6 +4163,23 @@ body.dark .topbar {
   line-height: 1.4;
 }
 
+.caption-backend-tooltip {
+  position: fixed;
+  z-index: 20000;
+  display: none;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #151515;
+  color: var(--fg);
+  box-shadow: 0 10px 26px rgba(0,0,0,.5);
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+.caption-backend-tooltip.open { display: block; }
+
 .tool-box h3 {
   margin-bottom: 6px !important;
   font-size: 14px;
@@ -4787,13 +4804,18 @@ textarea::placeholder {
 
 .json-modal {
   width: min(1180px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .json-workspace {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: minmax(300px, 0.95fr) minmax(360px, 1.05fr);
   gap: 12px;
-  min-height: 560px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .json-side,
@@ -4842,17 +4864,26 @@ textarea::placeholder {
 
 .json-bbox {
   position: absolute;
-  border: 2px solid #22c55e;
-  background: rgba(34,197,94,.12);
+  border: 2px solid var(--json-element-color, #22c55e);
+  background: var(--json-bbox-bg, rgba(34,197,94,.12));
   box-sizing: border-box;
   pointer-events: auto;
   cursor: move;
   touch-action: none;
 }
 
+.json-bbox:hover {
+  background: var(--json-bbox-hover-bg, rgba(34,197,94,.2));
+}
+
 .json-bbox.active {
-  border-color: #facc15;
-  background: rgba(250,204,21,.18);
+  border-color: var(--json-element-color, #22c55e);
+  background: var(--json-bbox-active-bg, rgba(34,197,94,.22));
+  box-shadow: 0 0 0 1px rgba(255,255,255,.78);
+}
+
+.json-bbox.active:hover {
+  background: var(--json-bbox-active-hover-bg, rgba(34,197,94,.26));
 }
 
 .json-bbox-handle {
@@ -4861,7 +4892,7 @@ textarea::placeholder {
   width: 9px;
   height: 9px;
   border: 1px solid #020617;
-  background: #facc15;
+  background: var(--json-element-color, #facc15);
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(255,255,255,.75);
   pointer-events: auto;
@@ -5077,6 +5108,18 @@ body.dark ::-webkit-scrollbar-thumb:hover {
   width: min(760px, 100%);
 }
 
+.about-modal { width: min(500px, 100%); }
+.about-content { display:grid; gap:12px; padding:18px; line-height:1.5; }
+.about-content p { margin:0; }
+.about-content a { color:var(--accent); }
+.about-product { display:flex; align-items:center; gap:12px; }
+.about-product img { width:36px; height:36px; }
+.about-product-name { font-size:20px; font-weight:800; }
+.about-product-tagline { color:var(--muted); }
+.about-details { display:grid; grid-template-columns:max-content 1fr; gap:5px 14px; margin:0; }
+.about-details dt { color:var(--muted); }
+.about-details dd { margin:0; }
+
 .help-content {
   padding: 14px 16px 18px;
   color: var(--fg);
@@ -5175,6 +5218,14 @@ body.dark ::-webkit-scrollbar-thumb:hover {
   background: #c92b47;
   border-color: #ff7890;
 }
+
+.top #exitMaskModeBtn {
+  background:#651b1b;
+  border-color:#b83a3a;
+  color:#fff;
+}
+.top #exitMaskModeBtn:hover { background:#7b2222; border-color:#dc4b4b; }
+.top #exitMaskModeBtn[hidden] { display:none !important; }
 
 .top .toolbar-btn-content {
   display: inline-flex;
@@ -5811,9 +5862,9 @@ body {
     <details class="top-menu">
       <summary>File</summary>
       <div class="top-menu-popover">
-        <form method="POST" action="/open_folder" id="openFolderForm"><button type="submit" title="Open an image folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.svg" alt="">Open Folder</span></button></form>
+        <form method="POST" action="/open_folder" id="openFolderForm"><button type="submit" title="Select an image folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.svg" alt="">Select Folder</span></button></form>
         <form method="POST" action="/add_files" id="addFilesForm"><input type="hidden" name="category" id="addFilesCategoryInput" value="Undefined"><button type="submit" title="Add image files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.svg" alt="">Add Images</span></button></form>
-        <button type="button" id="openFileManagerBtn" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.svg" alt="">Show Folder</span></button>
+        <button type="button" id="openFileManagerBtn" title="Show the selected folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.svg" alt="">Show Folder</span></button>
         <button type="button" id="convertBtn" title="Convert images to PNG"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_convert_png.svg" alt="">Convert to PNG</span></button>
         <form method="GET" action="/backup" class="backup-form"><button type="submit" title="Back up image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.svg" alt="">Backup</span></button></form>
         <form method="POST" action="/close_folder" id="closeFolderForm"><button type="submit" id="closeFolderBtn" title="Close Folder"><span class="toolbar-btn-content">Close Folder</span></button></form>
@@ -5847,6 +5898,7 @@ body {
       <summary>Help</summary>
       <div class="top-menu-popover">
         <button type="button" id="openHelpModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_quick_guide.svg" alt="">Quick guide</span></button>
+        <button type="button" id="openAboutModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_about.svg" alt="">About</span></button>
       </div>
     </details>
   </div>
@@ -5869,14 +5921,15 @@ body {
       <label><input type="radio" name="crop_base" value="1280" {% if selected_crop_base == 1280 %}checked{% endif %}> 1280</label>
       <label><input type="radio" name="crop_base" value="1536" {% if selected_crop_base == 1536 %}checked{% endif %}> 1536</label>
     </div>
-    <button type="button" id="refreshFolderBtn" class="top-control-action" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
+    <button type="button" id="refreshFolderBtn" class="top-control-action" title="Refresh the selected folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
     <button type="button" id="saveAllBtn" class="top-control-action" title="Save every unsaved item"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.svg" alt="">Save</span></button>
+    <button type="button" id="exitMaskModeBtn" class="top-control-action" title="Exit masking mode" hidden><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_exit_mode.svg" alt=""><span id="exitMaskModeLabel">Exit Masking mode</span></span></button>
   </div>
 </div>
 
 {% if not folder_name %}
 <div class="notice">
-  No folder is open. Select <b>File &gt; Open Folder</b> to load images and captions.
+  No folder is selected. Choose <b>File &gt; Select Folder</b> to load images and captions.
 </div>
 {% elif not pairs %}
 <div class="notice">
@@ -6010,9 +6063,9 @@ body {
 <div class="statusbar">
   <span class="statusbar-folder">
     {% if folder_name %}
-      Opened folder: {{ folder_name }} - {{ pairs|length }} image{% if pairs|length != 1 %}s{% endif %}.
+      Selected folder: {{ folder_name }} - {{ pairs|length }} image{% if pairs|length != 1 %}s{% endif %}.
     {% else %}
-      No folder opened
+      No folder selected
     {% endif %}
   </span>
   <span class="statusbar-message" id="statusbarMessage">{% if message %}{{ message|safe }}{% endif %}</span>
@@ -6122,11 +6175,11 @@ body {
     <div class="joy-grid">
       <label>
         Backend
-        <select id="joy_backend">
-          <option value="joycaption">JoyCaption</option>
-          <option value="wd14">WD-14</option>
-          <option value="qwen3_vl">Qwen3-VL</option>
-          <option value="external_api">External API</option>
+        <select id="joy_backend" aria-label="Caption backend">
+          <option value="joycaption" title="Best for detailed natural-language captions for general images and LoRA training data.">JoyCaption</option>
+          <option value="wd14" title="Best for concise Danbooru-style tags, especially for anime, illustrations, and character datasets.">WD-14</option>
+          <option value="qwen3_vl" title="Best for prompt-guided natural-language captions, character and scene descriptions, and structured Ideogram JSON.">Qwen3-VL</option>
+          <option value="external_api" title="Best when you want to use a remote vision model with a custom prompt; capabilities depend on the configured API model.">External API</option>
         </select>
       </label>
       <label>
@@ -6500,7 +6553,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
     </div>
     <p class="small watermark-help-text">Enable the editor, paint over the watermark, then use the removal button on that card. The preview is written to disk only when you save the card.</p>
     <div class="mask-mode-row">
-      <button type="button" id="watermarkToggleModeBtn">Enable watermark editor</button>
+      <button type="button" id="watermarkToggleModeBtn">Enable watermark removal mode</button>
     </div>
     <div class="joy-grid">
       <label>
@@ -6602,8 +6655,10 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
       </div>
       <div class="json-editor-side">
         <textarea class="json-editor" id="jsonEditor" spellcheck="false"></textarea>
-        <div class="json-status" id="jsonStatus">Open a folder with Ideogram 4 JSON captions.</div>
+        <div class="json-status" id="jsonStatus">Select a folder with Ideogram 4 JSON captions.</div>
         <div class="joy-actions">
+          <button type="button" id="jsonCopyBtn">Copy JSON</button>
+          <button type="button" id="jsonPasteBtn">Paste JSON</button>
           <button type="button" id="jsonValidateBtn">Validate</button>
           <button type="button" id="jsonValidateAllBtn">Validate all</button>
           <button type="button" id="jsonSwapBboxBtn">Swap bbox order</button>
@@ -6615,6 +6670,29 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
   </div>
 </div>
 
+<div class="joy-modal-backdrop" id="aboutModalBackdrop">
+  <div class="joy-modal about-modal" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle">
+    <div class="joy-modal-head">
+      <h3 id="aboutModalTitle">About</h3>
+      <button type="button" class="joy-close-btn" id="closeAboutModalBtn" aria-label="Close About">x</button>
+    </div>
+    <div class="about-content">
+      <div class="about-product">
+        <img src="/category_icon/btn_dataprep.svg" alt="">
+        <div><div class="about-product-name">DataPrep</div><div class="about-product-tagline">Image and video dataset preparation</div></div>
+      </div>
+      <dl class="about-details">
+        <dt>Version</dt><dd>Current development build</dd>
+        <dt>License</dt><dd>MIT License</dd>
+        <dt>Copyright</dt><dd>Copyright &copy; 2026 mattpeterstead</dd>
+      </dl>
+      <p><a href="https://github.com/mattpeterstead/dataprep" target="_blank" rel="noopener noreferrer">github.com/mattpeterstead/dataprep</a></p>
+      <p class="small">Third-party libraries, models, and assets are subject to their respective licenses.</p>
+    </div>
+    <div class="joy-actions"><button type="button" id="closeAboutModalActionBtn">Close</button></div>
+  </div>
+</div>
+
 <div class="joy-modal-backdrop" id="helpModalBackdrop">
   <div class="joy-modal help-modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
     <div class="joy-modal-head">
@@ -6623,7 +6701,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
     </div>
     <div class="help-content">
       <h4>Getting started</h4>
-      <p>Select <b>File &gt; Open Folder</b> to open an image dataset. Missing caption files are created beside their images.</p>
+      <p>Choose <b>File &gt; Select Folder</b> to select an image dataset. Missing caption files are created beside their images.</p>
 
       <h4>Folders and categories</h4>
       <p>Double-click a category icon to open its image window. Drag icons to arrange the Folders view. Right-click the Folders area or an icon to create, edit, or delete folders and category groups. Assign each folder to a category group in Edit Folder.</p>
@@ -6704,8 +6782,24 @@ function closeHelpModal() {
 }
 openHelpModalBtn?.addEventListener('click', openHelpModal);
 closeHelpModalBtn?.addEventListener('click', closeHelpModal);
+const aboutModalBackdrop = document.getElementById('aboutModalBackdrop');
+const openAboutModalBtn = document.getElementById('openAboutModalBtn');
+const closeAboutModalBtn = document.getElementById('closeAboutModalBtn');
+const closeAboutModalActionBtn = document.getElementById('closeAboutModalActionBtn');
+function openAboutModal() {
+  aboutModalBackdrop?.classList.add('open');
+}
+function closeAboutModal() {
+  aboutModalBackdrop?.classList.remove('open');
+}
+openAboutModalBtn?.addEventListener('click', openAboutModal);
+closeAboutModalBtn?.addEventListener('click', closeAboutModal);
+closeAboutModalActionBtn?.addEventListener('click', closeAboutModal);
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') closeHelpModal();
+  if (event.key === 'Escape') {
+    closeHelpModal();
+    closeAboutModal();
+  }
 });
 const JOY_MODEL_OPTIONS = JSON.parse(document.getElementById('joy-model-data').textContent);
 const CATEGORY_DEFS = JSON.parse(document.getElementById('category-defs-data').textContent);
@@ -8947,7 +9041,7 @@ async function setMaskMode(active, purpose = 'training') {
   if (nextActive === maskModeActive && (!nextActive || nextPurpose === maskModePurpose)) return;
   if (nextActive && maskModeActive && nextPurpose !== maskModePurpose) {
     if (maskModePurpose === 'training' && Array.from(maskStates.values()).some(state => state?.dirty)) {
-      await appAlert('Save or reset the unsaved training masks before opening the watermark editor.');
+      await appAlert('Save or reset the unsaved training masks before opening watermark removal mode.');
       return;
     }
     if (maskModePurpose === 'watermark' && Array.from(watermarkMaskStates.values()).some(state => state?.dirty)) {
@@ -8959,7 +9053,7 @@ async function setMaskMode(active, purpose = 'training') {
   const btn = document.getElementById('maskModeBtn');
   if (nextActive) {
     if (!HAS_OPEN_FOLDER) {
-      await appAlert('Open a folder before using Masking mode.');
+      await appAlert('Select a folder before using Masking mode.');
       return;
     }
     btn?.setAttribute('aria-busy', 'true');
@@ -8983,6 +9077,7 @@ async function setMaskMode(active, purpose = 'training') {
     btn?.setAttribute('aria-pressed', maskModePurpose === 'training' ? 'true' : 'false');
     updateMaskModeModalButton();
     updateWatermarkModeButton();
+    updateModeExitButton();
     setMaskTool(currentMaskTool);
     syncMaskSizeControls();
     syncMaskFillToleranceControls();
@@ -9007,13 +9102,28 @@ async function setMaskMode(active, purpose = 'training') {
   updateWatermarkModeButton();
   document.querySelectorAll('.undo-btn').forEach(button => { button.disabled = false; });
   document.querySelectorAll('.redo-btn').forEach(button => { button.disabled = true; });
-  setStatusbarMessage(maskModePurpose === 'watermark' ? 'Watermark editor closed.' : 'Masking mode closed.');
+  setStatusbarMessage(maskModePurpose === 'watermark' ? 'Watermark removal mode closed.' : 'Masking mode closed.');
   maskModePurpose = 'training';
+  updateModeExitButton();
 }
 
 function toggleMaskMode() {
   setMaskMode(!maskModeActive);
 }
+
+function updateModeExitButton() {
+  const button = document.getElementById('exitMaskModeBtn');
+  const label = document.getElementById('exitMaskModeLabel');
+  if (!button) return;
+  button.hidden = !maskModeActive;
+  const modeName = maskModePurpose === 'watermark' ? 'Watermark removal' : 'Masking';
+  if (label) label.textContent = `Exit ${modeName} mode`;
+  button.title = `Exit ${modeName.toLowerCase()} mode`;
+}
+
+document.getElementById('exitMaskModeBtn')?.addEventListener('click', () => {
+  setMaskMode(false, maskModePurpose);
+});
 
 function isImageFile(file) {
   return !!file && (
@@ -9071,7 +9181,7 @@ async function uploadImageFiles(files, sourceLabel = 'selected', targetCategory 
   const imageFiles = imageFilesFromFileList(files);
   if (!imageFiles.length) return;
   if (!HAS_OPEN_FOLDER) {
-    await appAlert('Open a folder before adding images.');
+    await appAlert('Select a folder before adding images.');
     return;
   }
   if (typeof hasUnsavedChanges === 'function' && hasUnsavedChanges()) {
@@ -9272,10 +9382,10 @@ document.getElementById('openFileManagerBtn')?.addEventListener('click', async (
     });
     const data = await res.json();
     if (!res.ok || !data.ok) {
-      await appAlert(data.error || 'Failed to open folder.');
+      await appAlert(data.error || 'Failed to select folder.');
     }
   } catch (e) {
-    await appAlert('Failed to open folder.');
+    await appAlert('Failed to select folder.');
   }
 });
 
@@ -10013,6 +10123,21 @@ function attachCardEventListeners(card) {
   bindZoomButton('.zoom-default-btn', () => applyMediaZoom(index, 1));
   bindZoomButton('.zoom-actual-btn', () => setActualMediaZoom(index));
 
+  const zoomStage = card.querySelector('.crop-stage');
+  if (zoomStage && !zoomStage.dataset.boundWheelZoom) {
+    zoomStage.dataset.boundWheelZoom = '1';
+    zoomStage.addEventListener('wheel', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const pixelDelta = event.deltaMode === 1
+        ? event.deltaY * 16
+        : event.deltaMode === 2
+          ? event.deltaY * Math.max(zoomStage.clientHeight, 1)
+          : event.deltaY;
+      applyMediaZoom(index, getMediaZoom(index) * Math.exp(-pixelDelta * 0.002));
+    }, { passive: false });
+  }
+
   const cardHead = card.querySelector('.card-head');
   if (cardHead && !cardHead.dataset.boundClick) {
     cardHead.dataset.boundClick = '1';
@@ -10476,6 +10601,7 @@ function attachCropper(index) {
   if (!stage || stage.dataset.bound === '1') return;
   stage.dataset.bound = '1';
 
+  const minNewCropDragPx = 6;
   ensureState(index);
   let drag = null;
 
@@ -10527,7 +10653,7 @@ function attachCropper(index) {
     }
 
     if (e.target.id === `crop-overlay-${index}` || e.target === stage || e.target.id === `crop-image-${index}`) {
-      drag = { mode: 'new', start, orig: null };
+      drag = { mode: 'new', start, orig: null, clientX: e.clientX, clientY: e.clientY };
       state.crop = {
         x: start.x,
         y: start.y,
@@ -10614,9 +10740,21 @@ function attachCropper(index) {
     markUnsaved(index);
   });
 
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('mouseup', (e) => {
     if (!drag) return;
+    const completedDrag = drag;
     drag = null;
+    if (
+      completedDrag.mode === 'new' &&
+      Math.hypot(e.clientX - completedDrag.clientX, e.clientY - completedDrag.clientY) < minNewCropDragPx
+    ) {
+      const state = ensureState(index);
+      state.crop = null;
+      state.upscale = false;
+      cropStates.set(index, state);
+      renderCrop(index);
+      markUnsaved(index);
+    }
   });
 
   window.addEventListener('resize', () => {
@@ -10952,7 +11090,7 @@ document.getElementById('openFolderForm')?.addEventListener('submit', async even
       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
     });
     const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || 'Open folder failed.');
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Select folder failed.');
     if (data.selected) {
       const nonPngCount = Number(data.non_png_count || 0);
       if (nonPngCount > 0) {
@@ -10970,7 +11108,7 @@ document.getElementById('openFolderForm')?.addEventListener('submit', async even
       window.location.assign('/');
     }
   } catch (err) {
-    await appAlert(err?.message || 'Open folder failed.');
+    await appAlert(err?.message || 'Select folder failed.');
   }
 });
 document.getElementById('refreshFolderBtn')?.addEventListener('click', async () => {
@@ -11238,7 +11376,7 @@ function updateWatermarkModeButton() {
   const btn = document.getElementById('watermarkToggleModeBtn');
   if (!btn) return;
   const active = maskModeActive && maskModePurpose === 'watermark';
-  btn.textContent = active ? 'Disable watermark editor' : 'Enable watermark editor';
+  btn.textContent = active ? 'Disable watermark removal mode' : 'Enable watermark removal mode';
   btn.classList.toggle('is-active', active);
   btn.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
@@ -11307,7 +11445,7 @@ function maskScopeLabel(scope) {
 async function runMaskBatch() {
   if (maskRunActive) return;
   if (!HAS_OPEN_FOLDER) {
-    await appAlert('Open a folder before running Auto mask.');
+    await appAlert('Select a folder before running Auto mask.');
     return;
   }
   const settings = getMaskSettings();
@@ -11569,8 +11707,55 @@ function syncCaptionFormatGenerationDefaults(captionFormat) {
 }
 
 
+const captionBackendDescriptions = {
+  joycaption: 'Best for detailed natural-language captions for general images and LoRA training data.',
+  wd14: 'Best for concise Danbooru-style tags, especially for anime, illustrations, and character datasets.',
+  qwen3_vl: 'Best for prompt-guided natural-language captions, character and scene descriptions, and structured Ideogram JSON.',
+  external_api: 'Best when you want to use a remote vision model with a custom prompt; capabilities depend on the configured API model.',
+};
+let captionBackendTooltip = null;
+
+function positionCaptionBackendTooltip(select) {
+  if (!captionBackendTooltip) return;
+  const rect = select.getBoundingClientRect();
+  const margin = 8;
+  captionBackendTooltip.style.left = `${clamp(rect.left, margin, window.innerWidth - captionBackendTooltip.offsetWidth - margin)}px`;
+  const below = rect.bottom + 6;
+  const above = rect.top - captionBackendTooltip.offsetHeight - 6;
+  captionBackendTooltip.style.top = `${below + captionBackendTooltip.offsetHeight <= window.innerHeight - margin ? below : Math.max(margin, above)}px`;
+}
+
+function syncCaptionBackendTooltip(select) {
+  if (!captionBackendTooltip) return;
+  captionBackendTooltip.textContent = captionBackendDescriptions[select.value] || '';
+  if (captionBackendTooltip.classList.contains('open')) positionCaptionBackendTooltip(select);
+}
+
+function bindCaptionBackendTooltip(select) {
+  if (!select || select.dataset.tooltipBound === '1') return;
+  select.dataset.tooltipBound = '1';
+  captionBackendTooltip = document.createElement('div');
+  captionBackendTooltip.id = 'captionBackendTooltip';
+  captionBackendTooltip.className = 'caption-backend-tooltip';
+  captionBackendTooltip.setAttribute('role', 'tooltip');
+  document.body.appendChild(captionBackendTooltip);
+  select.setAttribute('aria-describedby', captionBackendTooltip.id);
+  const show = () => {
+    syncCaptionBackendTooltip(select);
+    captionBackendTooltip.classList.add('open');
+    positionCaptionBackendTooltip(select);
+  };
+  const hide = () => captionBackendTooltip.classList.remove('open');
+  select.addEventListener('mouseenter', show);
+  select.addEventListener('mouseleave', hide);
+  select.addEventListener('focus', show);
+  select.addEventListener('blur', hide);
+  select.addEventListener('change', () => syncCaptionBackendTooltip(select));
+}
+
 function updateCaptionBackendUI() {
   const backendSelect = document.getElementById('joy_backend');
+  bindCaptionBackendTooltip(backendSelect);
   const captionFormat = document.getElementById('joy_caption_format')?.value || 'standard_text';
   const ideogramJson = captionFormat === 'ideogram4_json';
   syncCaptionFormatGenerationDefaults(captionFormat);
@@ -11596,6 +11781,7 @@ function updateCaptionBackendUI() {
   if (externalName) externalName.disabled = ideogramJson;
   Object.keys(systemPromptPresetConfigs).forEach(updateSystemPromptPresetControls);
   const backend = backendSelect?.value || 'joycaption';
+  if (backendSelect) syncCaptionBackendTooltip(backendSelect);
   document.querySelectorAll('.joy-only').forEach(el => {
     el.style.display = backend === 'joycaption' ? '' : 'none';
   });
@@ -12288,6 +12474,8 @@ const jsonValidationLog = document.getElementById("jsonValidationLog");
 const jsonElementList = document.getElementById("jsonElementList");
 const jsonPrevBtn = document.getElementById("jsonPrevBtn");
 const jsonNextBtn = document.getElementById("jsonNextBtn");
+const jsonCopyBtn = document.getElementById("jsonCopyBtn");
+const jsonPasteBtn = document.getElementById("jsonPasteBtn");
 const jsonValidateBtn = document.getElementById("jsonValidateBtn");
 const jsonValidateAllBtn = document.getElementById("jsonValidateAllBtn");
 const jsonSwapBboxBtn = document.getElementById("jsonSwapBboxBtn");
@@ -12301,6 +12489,37 @@ function setJsonStatus(text, kind = "") {
   jsonStatus.textContent = text || "";
   jsonStatus.classList.toggle("ok", kind === "ok");
   jsonStatus.classList.toggle("error", kind === "error");
+}
+
+async function copyCurrentJsonToClipboard() {
+  if (!jsonEditor) return;
+  try {
+    await navigator.clipboard.writeText(jsonEditor.value);
+    setJsonStatus("JSON prompt copied to the clipboard.", "ok");
+  } catch {
+    setJsonStatus("Could not copy JSON. Allow clipboard access and try again.", "error");
+  }
+}
+
+async function pasteJsonFromClipboard() {
+  if (!jsonEditor) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) {
+      setJsonStatus("The clipboard does not contain a JSON prompt.", "error");
+      return;
+    }
+    jsonEditor.value = text;
+    renderJsonBboxes();
+    setJsonStatus(
+      parseJsonEditorValue()
+        ? "JSON prompt pasted from the clipboard. Save to write the change."
+        : "Clipboard text was pasted, but it is not valid JSON.",
+      parseJsonEditorValue() ? "ok" : "error"
+    );
+  } catch {
+    setJsonStatus("Could not read the clipboard. Allow clipboard access and try again.", "error");
+  }
 }
 
 function parseJsonEditorValue() {
@@ -12330,6 +12549,23 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function jsonElementColorTheme(element) {
+  const palette = (Array.isArray(element?.color_palette) ? element.color_palette : [])
+    .map(color => String(color || "").trim().toUpperCase())
+    .filter(color => /^#[0-9A-F]{6}$/.test(color))
+    .slice(0, 5);
+  if (!palette.length) return { hex: "#22C55E", rgb: "34, 197, 94" };
+  const totals = palette.reduce((sum, color) => {
+    sum[0] += parseInt(color.slice(1, 3), 16);
+    sum[1] += parseInt(color.slice(3, 5), 16);
+    sum[2] += parseInt(color.slice(5, 7), 16);
+    return sum;
+  }, [0, 0, 0]);
+  const rgb = totals.map(value => Math.round(value / palette.length));
+  const hex = `#${rgb.map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  return { hex, rgb: rgb.join(", ") };
+}
+
 function renderJsonElementList(data) {
   if (!jsonElementList) return;
   const elements = getIdeogramElements(data);
@@ -12339,7 +12575,8 @@ function renderJsonElementList(data) {
   }
   jsonElementList.innerHTML = elements.map((element, index) => {
     const label = `${index + 1}. ${element.type || "obj"}${Array.isArray(element.bbox) ? " bbox" : ""} - ${String(element.desc || element.text || "").slice(0, 90)}`;
-    return `<button type="button" class="json-element-item${index === jsonActiveElementIndex ? " active" : ""}" data-json-element="${index}">${escapeHtml(label)}</button>`;
+    const theme = jsonElementColorTheme(element);
+    return `<button type="button" class="json-element-item${index === jsonActiveElementIndex ? " active" : ""}" data-json-element="${index}" style="background:rgba(${theme.rgb},.2);border-left:3px solid ${theme.hex}">${escapeHtml(label)}</button>`;
   }).join("");
 }
 
@@ -12363,6 +12600,12 @@ function renderJsonBboxes() {
     box.className = `json-bbox${index === jsonActiveElementIndex ? " active" : ""}`;
     box.dataset.jsonElement = String(index);
     box.title = element.desc || element.text || `Element ${index + 1}`;
+    const theme = jsonElementColorTheme(element);
+    box.style.setProperty("--json-element-color", theme.hex);
+    box.style.setProperty("--json-bbox-bg", `rgba(${theme.rgb}, .12)`);
+    box.style.setProperty("--json-bbox-hover-bg", `rgba(${theme.rgb}, .2)`);
+    box.style.setProperty("--json-bbox-active-bg", `rgba(${theme.rgb}, .22)`);
+    box.style.setProperty("--json-bbox-active-hover-bg", `rgba(${theme.rgb}, .26)`);
     box.style.left = `${offsetLeft + (xMin / 1000) * imageRect.width}px`;
     box.style.top = `${offsetTop + (yMin / 1000) * imageRect.height}px`;
     box.style.width = `${Math.max(2, ((xMax - xMin) / 1000) * imageRect.width)}px`;
@@ -12649,6 +12892,8 @@ jsonNextBtn?.addEventListener("click", () => {
   jsonCaptionIndex = (jsonCaptionIndex + 1) % jsonCaptionItems.length;
   renderJsonCaptionItem();
 });
+jsonCopyBtn?.addEventListener("click", copyCurrentJsonToClipboard);
+jsonPasteBtn?.addEventListener("click", pasteJsonFromClipboard);
 jsonValidateBtn?.addEventListener("click", () => validateCurrentJson({ applyNormalized: true }));
 jsonValidateAllBtn?.addEventListener("click", validateAllJsonCaptions);
 jsonSwapBboxBtn?.addEventListener("click", swapCurrentJsonBboxOrder);
@@ -12712,7 +12957,7 @@ function makeModalDraggable(backdrop) {
   });
 }
 
-[joyModalBackdrop, maskModalBackdrop, summaryModalBackdrop, toolsModalBackdrop, jsonModalBackdrop, helpModalBackdrop, appDialogBackdrop].forEach(makeModalDraggable);
+[joyModalBackdrop, maskModalBackdrop, summaryModalBackdrop, toolsModalBackdrop, jsonModalBackdrop, helpModalBackdrop, aboutModalBackdrop, appDialogBackdrop].forEach(makeModalDraggable);
 
 function textToolCaptionTextareas() {
   return Array.from(document.querySelectorAll('.caption-textarea')).filter(textarea => {
@@ -13188,7 +13433,7 @@ def add_files():
     global current_folder, pairs_cache, message, folder_name, category_assignments
 
     if not current_folder or not os.path.isdir(current_folder):
-        message = "No folder is open. Open a folder first."
+        message = "No folder is selected. Select a folder first."
         return redirect(url_for("index"))
 
     root = tk.Tk()
@@ -13268,7 +13513,7 @@ def upload_images():
     global current_folder, pairs_cache, message, folder_name, category_assignments
 
     if not current_folder or not os.path.isdir(current_folder):
-        return jsonify({"ok": False, "error": "Open a folder before adding images."}), 400
+        return jsonify({"ok": False, "error": "Select a folder before adding images."}), 400
 
     uploads = request.files.getlist("images")
     if not uploads:
@@ -13385,7 +13630,7 @@ def open_folder():
 def refresh_folder():
     global pairs_cache, message, category_assignments, selected_crop_base
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     before = {name for name, _ in pairs_cache}
     missing = ensure_missing_txt(current_folder)
@@ -13413,7 +13658,7 @@ def refresh_folder():
 def convert_images_to_png():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     image_names = [f for f in sorted(os.listdir(current_folder)) if f.lower().endswith(IMAGE_EXTENSIONS)]
     if not image_names:
@@ -13508,7 +13753,7 @@ def image(filename):
 @app.route("/mask/<path:filename>")
 def mask_image(filename):
     if not current_folder:
-        return "No folder opened.", 404
+        return "No folder selected.", 404
     mask_path = ensure_mask_for_image(current_folder, filename)
     if not mask_path or not mask_path.exists():
         return "Mask not found.", 404
@@ -13519,7 +13764,7 @@ def mask_image(filename):
 def ensure_masks():
     global message
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     try:
         created, existing = ensure_masks_for_folder(current_folder)
     except Exception as e:
@@ -13531,7 +13776,7 @@ def ensure_masks():
 @app.route("/save_mask", methods=["POST"])
 def save_mask():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     img_name = Path(str(data.get("img_name") or "")).name
     data_url = str(data.get("mask_data") or "")
@@ -13562,7 +13807,7 @@ def save_mask():
 @app.route("/auto_mask", methods=["POST"])
 def auto_mask():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     img_name = Path(str(data.get("img_name") or "")).name
     model_name = str(data.get("model") or DEFAULT_AUTO_MASK_MODEL).strip() or DEFAULT_AUTO_MASK_MODEL
@@ -13591,7 +13836,7 @@ def auto_mask():
 @app.route("/remove_watermark", methods=["POST"])
 def remove_watermark():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     img_name = Path(str(data.get("img_name") or "")).name
     if not img_name or not pair_exists(current_folder, img_name):
@@ -13661,7 +13906,7 @@ def switch_to_simple():
 def rename_all_pairs():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     prefix = str(data.get("prefix", ""))
@@ -13736,7 +13981,7 @@ def rename_all_pairs():
 @app.route("/captions_json")
 def captions_json():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     caption_format = normalize_caption_format(request.args.get("caption_format"))
     pairs = []
@@ -13777,7 +14022,7 @@ def ideogram_json_validate():
 @app.route("/ideogram_json_validate_all")
 def ideogram_json_validate_all():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     items = []
     counts = {"valid": 0, "repairable": 0, "invalid": 0, "missing": 0}
@@ -13810,7 +14055,7 @@ def ideogram_json_validate_all():
 def save_pair():
     global pairs_cache, message
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True)
     img_name = data.get("img_name")
@@ -13933,7 +14178,7 @@ def save_pair():
 def clone_pair():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     img_name = data.get("img_name")
@@ -13984,7 +14229,7 @@ def clone_pair():
 def rename_pair():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     img_name = data.get("img_name")
@@ -14039,7 +14284,7 @@ def rename_pair():
 def delete_pair():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True)
     img_name = data.get("img_name")
@@ -14069,7 +14314,7 @@ def delete_pair():
 def set_category():
     global category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     img_name = data.get("img_name")
@@ -14122,7 +14367,7 @@ def unique_category_group_name(base_name, exclude_id=None):
 def create_category_group():
     global category_groups
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     name = unique_category_group_name(data.get("name") or "New Group")
     base_id = normalize_category_group_id(name) or "group"
@@ -14144,7 +14389,7 @@ def create_category_group():
 @app.route("/update_category_group", methods=["POST"])
 def update_category_group():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     group_id = normalize_category_group_id(data.get("id"))
     group = category_group_for_id(group_id)
@@ -14165,7 +14410,7 @@ def update_category_group():
 def delete_category_group():
     global category_groups
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     group_id = normalize_category_group_id(data.get("id"))
     if group_id == DEFAULT_CATEGORY_GROUP_ID:
@@ -14184,7 +14429,7 @@ def delete_category_group():
 def create_category():
     global category_folders
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     index = len(category_folders)
@@ -14214,7 +14459,7 @@ def create_category():
 def update_category():
     global category_folders, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     old_name = str(data.get("old_name") or "").strip()
@@ -14256,7 +14501,7 @@ def update_category():
 def delete_category():
     global category_folders, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     name = str(data.get("name") or "").strip()
@@ -14282,7 +14527,7 @@ def delete_category():
 def move_pairs():
     global category_assignments, pairs_cache
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     img_names = [str(name) for name in data.get("img_names") or [] if isinstance(name, str)]
@@ -14329,8 +14574,8 @@ def replace_all():
     global message, pairs_cache
     if not current_folder:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"ok": False, "error": "No folder opened."}), 400
-        message = "No folder opened."
+            return jsonify({"ok": False, "error": "No folder selected."}), 400
+        message = "No folder selected."
         return redirect(url_for("index"))
 
     match_string = request.form.get("match_string", "")
@@ -14362,8 +14607,8 @@ def add_triggerword_all():
     global message, pairs_cache
     if not current_folder:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"ok": False, "error": "No folder opened."}), 400
-        message = "No folder opened."
+            return jsonify({"ok": False, "error": "No folder selected."}), 400
+        message = "No folder selected."
         return redirect(url_for("index"))
 
     trigger_word = request.form.get("trigger_word", "")
@@ -14404,8 +14649,8 @@ def count_string():
     global message
     if not current_folder:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"ok": False, "error": "No folder opened."}), 400
-        message = "No folder opened."
+            return jsonify({"ok": False, "error": "No folder selected."}), 400
+        message = "No folder selected."
         return redirect(url_for("index"))
 
     count_regex = request.form.get("count_string", "")
@@ -14550,7 +14795,7 @@ def backup():
     global message
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if not current_folder:
-        message = "No folder opened."
+        message = "No folder selected."
         if wants_json:
             return jsonify({"ok": False, "error": message}), 400
         return redirect(url_for("index"))
@@ -14667,7 +14912,7 @@ def joycaption_start():
         return jsonify({"ok": False, "error": "Caption is already running."}), 400
 
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     options = request.get_json(force=True) or {}
 
@@ -14718,7 +14963,7 @@ def open_in_file_manager():
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in (request.headers.get("Accept") or "")
 
     if not current_folder:
-        error = "No folder opened."
+        error = "No folder selected."
         if wants_json:
             return jsonify({"ok": False, "error": error}), 400
         message = error

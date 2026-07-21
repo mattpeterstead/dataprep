@@ -3796,6 +3796,22 @@ body.watermark-mode .watermark-apply-btn {
 }
 .watermark-batch h4 { margin:0 0 4px; font-size:14px; }
 .watermark-batch-help { margin:0 0 8px; line-height:1.4; }
+.caption-backend-tooltip {
+  position: fixed;
+  z-index: 20000;
+  display: none;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #151515;
+  color: var(--fg);
+  box-shadow: 0 10px 26px rgba(0,0,0,.5);
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+.caption-backend-tooltip.open { display: block; }
 .watermark-batch .joy-grid { padding:0; grid-template-columns:repeat(2,minmax(0,1fr)); }
 .watermark-batch .joy-actions { position:static; margin-top:8px; padding:8px 0; background:transparent; border:0; }
 .watermark-batch .joy-progress { margin:0 0 8px; }
@@ -4997,13 +5013,18 @@ textarea::placeholder {
 
 .json-modal {
   width: min(1420px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .json-workspace {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: minmax(320px, 0.85fr) minmax(520px, 1.15fr);
   gap: 12px;
-  min-height: 560px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .json-side,
@@ -5052,17 +5073,26 @@ textarea::placeholder {
 
 .json-bbox {
   position: absolute;
-  border: 2px solid #22c55e;
-  background: rgba(34,197,94,.12);
+  border: 2px solid var(--json-element-color, #22c55e);
+  background: var(--json-bbox-bg, rgba(34,197,94,.12));
   box-sizing: border-box;
   pointer-events: auto;
   cursor: move;
   touch-action: none;
 }
 
+.json-bbox:hover {
+  background: var(--json-bbox-hover-bg, rgba(34,197,94,.2));
+}
+
 .json-bbox.active {
-  border-color: #facc15;
-  background: rgba(250,204,21,.18);
+  border-color: var(--json-element-color, #22c55e);
+  background: var(--json-bbox-active-bg, rgba(34,197,94,.22));
+  box-shadow: 0 0 0 1px rgba(255,255,255,.78);
+}
+
+.json-bbox.active:hover {
+  background: var(--json-bbox-active-hover-bg, rgba(34,197,94,.26));
 }
 
 .json-bbox-handle {
@@ -5071,7 +5101,7 @@ textarea::placeholder {
   width: 9px;
   height: 9px;
   border: 1px solid #020617;
-  background: #facc15;
+  background: var(--json-element-color, #facc15);
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(255,255,255,.75);
   pointer-events: auto;
@@ -5208,10 +5238,19 @@ textarea::placeholder {
   background: var(--panel);
 }
 
-.json-element-editor.active,
+.json-element-editor {
+  border-color: rgba(var(--json-element-rgb, 34, 197, 94), .58);
+  background: rgba(var(--json-element-rgb, 34, 197, 94), .2);
+}
+
 .json-bbox-editor.active {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.json-element-editor.active {
+  border-color: var(--json-element-color, var(--accent));
+  box-shadow: inset 0 0 0 1px var(--json-element-color, var(--accent));
 }
 
 .json-element-editor-head,
@@ -5251,33 +5290,135 @@ textarea::placeholder {
   font-size: 11px;
 }
 
-.json-raw-details {
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  overflow: hidden;
+.json-editor-state {
+  display: none;
 }
 
-.json-raw-details summary {
-  padding: 7px 9px;
-  cursor: pointer;
-  color: var(--fg);
-  font-size: 12px;
-  font-weight: 750;
-  background: var(--panel);
+.json-raw-modal {
+  width: min(900px, calc(100vw - 28px));
+  max-height: min(820px, calc(100vh - 28px));
+  display: flex;
+  flex-direction: column;
 }
 
-.json-editor {
+.json-raw-modal-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.json-raw-editor {
   display: block;
   width: 100%;
-  min-height: 210px;
+  min-height: min(560px, 62vh);
   box-sizing: border-box;
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   resize: vertical;
   font-family: Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   line-height: 1.35;
   white-space: pre;
+}
+
+.json-raw-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.json-color-palette {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 82%, var(--card));
+}
+
+.json-color-swatch,
+.json-color-add {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 5px;
+}
+
+.json-color-swatch {
+  position: relative;
+  border: 1px solid rgba(255,255,255,.58);
+  background: var(--json-swatch);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.28), 0 1px 3px rgba(0,0,0,.28);
+}
+
+.json-color-swatch::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(0,0,0,.16);
+  border-radius: 3px;
+}
+
+.json-color-add {
+  display: grid;
+  place-items: center;
+  color: var(--fg);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.json-color-menu {
+  position: fixed;
+  z-index: 1200;
+  width: 238px;
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 14px 34px rgba(0,0,0,.48);
+}
+
+.json-color-menu[hidden] {
+  display: none;
+}
+
+.json-color-menu-fields {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.json-color-menu input[type="color"] {
+  width: 42px;
+  height: 34px;
+  padding: 2px;
+}
+
+.json-color-menu input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  text-transform: uppercase;
+}
+
+.json-color-menu-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.json-color-menu-actions button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 11px;
 }
 
 .json-status {
@@ -5503,6 +5644,18 @@ body.top-menu-flat .top .top-menu-popover .toolbar-btn-content {
   width: min(760px, 100%);
 }
 
+.about-modal { width: min(500px, 100%); }
+.about-content { display:grid; gap:12px; padding:18px; line-height:1.5; }
+.about-content p { margin:0; }
+.about-content a { color:var(--accent); }
+.about-product { display:flex; align-items:center; gap:12px; }
+.about-product img { width:36px; height:36px; }
+.about-product-name { font-size:20px; font-weight:800; }
+.about-product-tagline { color:var(--muted); }
+.about-details { display:grid; grid-template-columns:max-content 1fr; gap:5px 14px; margin:0; }
+.about-details dt { color:var(--muted); }
+.about-details dd { margin:0; }
+
 .help-content {
   padding: 14px 16px 18px;
   color: var(--fg);
@@ -5596,6 +5749,14 @@ body.top-menu-flat .top .top-menu-popover .toolbar-btn-content {
   background: #c92b47;
   border-color: #ff7890;
 }
+
+.top #exitMaskModeBtn {
+  background:#651b1b;
+  border-color:#b83a3a;
+  color:#fff;
+}
+.top #exitMaskModeBtn:hover { background:#7b2222; border-color:#dc4b4b; }
+.top #exitMaskModeBtn[hidden] { display:none !important; }
 
 .top .toolbar-btn-content {
   display: inline-flex;
@@ -5741,9 +5902,9 @@ body {
     <details class="top-menu">
       <summary>File</summary>
       <div class="top-menu-popover">
-        <form method="POST" action="/open_folder" id="openFolderForm"><button type="submit" title="Open an image folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.svg" alt="">Open Folder</span></button></form>
+        <form method="POST" action="/open_folder" id="openFolderForm"><button type="submit" title="Select an image folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.svg" alt="">Select Folder</span></button></form>
         <form method="POST" action="/add_files"><button type="submit" title="Add image files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.svg" alt="">Add Images</span></button></form>
-        <button type="button" id="openFileManagerBtn" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.svg" alt="">Show Folder</span></button>
+        <button type="button" id="openFileManagerBtn" title="Show the selected folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.svg" alt="">Show Folder</span></button>
         <button type="button" id="convertBtn" title="Convert images to PNG"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_convert_png.svg" alt="">Convert to PNG</span></button>
         <form method="GET" action="/backup" class="backup-form"><button type="submit" title="Back up image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.svg" alt="">Backup</span></button></form>
         <button type="button" id="openSettingsModalBtn" title="Open application settings"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_settings.svg" alt="">Settings</span></button>
@@ -5771,6 +5932,7 @@ body {
       <summary>Help</summary>
       <div class="top-menu-popover">
         <button type="button" id="openHelpModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_quick_guide.svg" alt="">Quick guide</span></button>
+        <button type="button" id="openAboutModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_about.svg" alt="">About</span></button>
       </div>
     </details>
   </div>
@@ -5793,16 +5955,17 @@ body {
       <label><input type="radio" name="crop_base" value="1280" {% if selected_crop_base == 1280 %}checked{% endif %}> 1280</label>
       <label><input type="radio" name="crop_base" value="1536" {% if selected_crop_base == 1536 %}checked{% endif %}> 1536</label>
     </div>
-    <button type="button" id="refreshFolderBtn" class="top-control-action" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
+    <button type="button" id="refreshFolderBtn" class="top-control-action" title="Refresh the selected folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
     <button type="button" id="autoCropAllBtn" class="top-control-action" title="Auto crop every image"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_auto_crop_all.svg" alt="">Auto crop</span></button>
     <button type="button" id="resetAllBtn" class="top-control-action" title="Reset unsaved captions, crops, and transforms"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_reset_all.svg" alt="">Reset</span></button>
     <button type="button" id="saveAllBtn" class="top-control-action" title="Save every unsaved item"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.svg" alt="">Save</span></button>
+    <button type="button" id="exitMaskModeBtn" class="top-control-action" title="Exit masking mode" hidden><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_exit_mode.svg" alt=""><span id="exitMaskModeLabel">Exit Masking mode</span></span></button>
   </div>
 </div>
 
 {% if not folder_name %}
 <div class="notice">
-  No folder is open. Select <b>File &gt; Open Folder</b> to load images and captions.
+  No folder is selected. Choose <b>File &gt; Select Folder</b> to load images and captions.
 </div>
 {% elif not pairs %}
 <div class="notice">
@@ -5915,7 +6078,7 @@ body {
 
 <div class="statusbar">
   <span class="statusbar-folder">
-    {% if folder_name %}Opened folder: {{ folder_name }} - {{ pairs|length }} image{% if pairs|length != 1 %}s{% endif %}.{% else %}No folder opened{% endif %}
+    {% if folder_name %}Selected folder: {{ folder_name }} - {{ pairs|length }} image{% if pairs|length != 1 %}s{% endif %}.{% else %}No folder selected{% endif %}
   </span>
   <span class="statusbar-message">{% if message %}{{ message|safe }}{% endif %}</span>
 </div>
@@ -5954,11 +6117,11 @@ body {
     <div class="joy-grid">
       <label>
         Backend
-        <select id="joy_backend">
-          <option value="joycaption">JoyCaption</option>
-          <option value="wd14">WD-14</option>
-          <option value="qwen3_vl">Qwen3-VL</option>
-          <option value="external_api">External API</option>
+        <select id="joy_backend" aria-label="Caption backend">
+          <option value="joycaption" title="Best for detailed natural-language captions for general images and LoRA training data.">JoyCaption</option>
+          <option value="wd14" title="Best for concise Danbooru-style tags, especially for anime, illustrations, and character datasets.">WD-14</option>
+          <option value="qwen3_vl" title="Best for prompt-guided natural-language captions, character and scene descriptions, and structured Ideogram JSON.">Qwen3-VL</option>
+          <option value="external_api" title="Best when you want to use a remote vision model with a custom prompt; capabilities depend on the configured API model.">External API</option>
         </select>
       </label>
       <label>
@@ -6324,7 +6487,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
     </div>
     <p class="small watermark-help-text">For a single image, enable the editor and paint over the watermark before using Remove on that card. Batch removal detects each image independently. Results are written to disk only when you save them.</p>
     <div class="mask-mode-row">
-      <button type="button" id="watermarkToggleModeBtn">Enable watermark editor</button>
+      <button type="button" id="watermarkToggleModeBtn">Enable watermark removal mode</button>
     </div>
     <div class="joy-grid">
       <label>
@@ -6346,7 +6509,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
     </div>
     <section class="watermark-batch" aria-labelledby="watermarkBatchTitle">
       <h4 id="watermarkBatchTitle">Batch removal</h4>
-      <p class="small watermark-batch-help">Qwen3-VL detects the watermark separately in every image. A manually painted mask overrides detection only for that image. Images without a confident detection are skipped, and all results remain unsaved previews.</p>
+      <p class="small watermark-batch-help"><b>Batch removal is experimental and may be unreliable.</b> Remove watermarks manually whenever possible. Qwen3-VL detects the watermark separately in every image; a manually painted mask overrides detection only for that image. Images without a confident detection are skipped, and all results remain unsaved previews.</p>
       <div class="joy-grid">
         <label>
           Detection model
@@ -6550,31 +6713,31 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
             <div class="json-form-grid">
               <label class="json-form-field">
                 Aesthetics
-                <input type="text" id="jsonStyleAesthetics" data-json-base-field="style_aesthetics">
+                <input type="text" id="jsonStyleAesthetics" data-json-base-field="style_aesthetics" title="Example: cinematic realism with crisp detail">
               </label>
               <label class="json-form-field">
                 Lighting
-                <input type="text" id="jsonStyleLighting" data-json-base-field="style_lighting">
+                <input type="text" id="jsonStyleLighting" data-json-base-field="style_lighting" title="Example: soft diffused daylight from the left">
               </label>
               <label class="json-form-field">
                 Description type
-                <select id="jsonStyleVariant" data-json-base-field="style_variant">
+                <select id="jsonStyleVariant" data-json-base-field="style_variant" title="Example: Photo for a photograph, or Art style for an illustration">
                   <option value="photo">Photo</option>
                   <option value="art_style">Art style</option>
                 </select>
               </label>
               <label class="json-form-field">
                 Medium
-                <input type="text" id="jsonStyleMedium" data-json-base-field="style_medium">
+                <input type="text" id="jsonStyleMedium" data-json-base-field="style_medium" title="Example: digital photograph, or digital illustration">
               </label>
               <label class="json-form-field full">
                 Photo / art style description
-                <input type="text" id="jsonStyleVariantDescription" data-json-base-field="style_variant_description">
+                <input type="text" id="jsonStyleVariantDescription" data-json-base-field="style_variant_description" title="Example: editorial portrait photography with shallow depth of field; or flat vector illustration with bold geometric shapes">
               </label>
-              <label class="json-form-field full">
-                Color palette
-                <input type="text" id="jsonStylePalette" data-json-base-field="style_palette" placeholder="#RRGGBB, #RRGGBB">
-              </label>
+              <div class="json-form-field full">
+                <span>Color palette</span>
+                <div class="json-color-palette" id="jsonStylePalette" data-json-palette-scope="style" aria-label="Style color palette" title="Example: #1F2937, #D97706, #F3F4F6"></div>
+              </div>
             </div>
           </section>
 
@@ -6607,13 +6770,13 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
             <div class="json-bbox-form" id="jsonBboxForm"></div>
           </section>
 
-          <details class="json-raw-details">
-            <summary>Raw JSON</summary>
-            <textarea class="json-editor" id="jsonEditor" spellcheck="false"></textarea>
-          </details>
+          <textarea class="json-editor-state" id="jsonEditor" aria-hidden="true" tabindex="-1"></textarea>
         </div>
-        <div class="json-status" id="jsonStatus">Open a folder with Ideogram 4 JSON captions.</div>
+        <div class="json-status" id="jsonStatus">Select a folder with Ideogram 4 JSON captions.</div>
         <div class="joy-actions">
+          <button type="button" id="jsonCopyBtn">Copy JSON</button>
+          <button type="button" id="jsonPasteBtn">Paste JSON</button>
+          <button type="button" id="jsonEditRawBtn">Edit raw</button>
           <button type="button" id="jsonValidateBtn">Validate</button>
           <button type="button" id="jsonValidateAllBtn">Validate all</button>
           <button type="button" id="jsonSwapBboxBtn">Swap bbox order</button>
@@ -6622,6 +6785,34 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
         <div class="logbox" id="jsonValidationLog" style="min-height:90px; max-height:170px;"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="joy-modal-backdrop" id="jsonRawModalBackdrop">
+  <div class="joy-modal json-raw-modal" role="dialog" aria-modal="true" aria-labelledby="jsonRawModalTitle">
+    <div class="joy-modal-head">
+      <h3 id="jsonRawModalTitle">Edit raw JSON</h3>
+      <button type="button" class="joy-close-btn" id="jsonRawCloseBtn" aria-label="Close raw JSON editor">x</button>
+    </div>
+    <div class="json-raw-modal-body">
+      <textarea class="json-raw-editor" id="jsonRawEditor" spellcheck="false" aria-label="Raw JSON"></textarea>
+      <div class="json-raw-modal-actions">
+        <button type="button" id="jsonRawCancelBtn">Cancel</button>
+        <button type="button" id="jsonRawSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="json-color-menu" id="jsonColorMenu" hidden>
+  <div class="json-color-menu-fields">
+    <input type="color" id="jsonColorPicker" aria-label="Choose color">
+    <input type="text" id="jsonColorHex" maxlength="7" placeholder="#RRGGBB" aria-label="Hex color">
+  </div>
+  <div class="json-color-menu-actions">
+    <button type="button" id="jsonColorRemoveBtn">Remove</button>
+    <button type="button" id="jsonColorCancelBtn">Cancel</button>
+    <button type="button" id="jsonColorApplyBtn">Apply</button>
   </div>
 </div>
 
@@ -6653,6 +6844,29 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
   </div>
 </div>
 
+<div class="joy-modal-backdrop" id="aboutModalBackdrop">
+  <div class="joy-modal about-modal" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle">
+    <div class="joy-modal-head">
+      <h3 id="aboutModalTitle">About</h3>
+      <button type="button" class="joy-close-btn" id="closeAboutModalBtn" aria-label="Close About">x</button>
+    </div>
+    <div class="about-content">
+      <div class="about-product">
+        <img src="/category_icon/btn_dataprep.svg" alt="">
+        <div><div class="about-product-name">DataPrep</div><div class="about-product-tagline">Image and video dataset preparation</div></div>
+      </div>
+      <dl class="about-details">
+        <dt>Version</dt><dd>Current development build</dd>
+        <dt>License</dt><dd>MIT License</dd>
+        <dt>Copyright</dt><dd>Copyright &copy; 2026 mattpeterstead</dd>
+      </dl>
+      <p><a href="https://github.com/mattpeterstead/dataprep" target="_blank" rel="noopener noreferrer">github.com/mattpeterstead/dataprep</a></p>
+      <p class="small">Third-party libraries, models, and assets are subject to their respective licenses.</p>
+    </div>
+    <div class="joy-actions"><button type="button" id="closeAboutModalActionBtn">Close</button></div>
+  </div>
+</div>
+
 <div class="joy-modal-backdrop" id="helpModalBackdrop">
   <div class="joy-modal help-modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
     <div class="joy-modal-head">
@@ -6661,7 +6875,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
     </div>
     <div class="help-content">
       <h4>Getting started</h4>
-      <p>Select <b>File &gt; Open Folder</b> to open an image dataset. Missing caption files are created beside their images.</p>
+      <p>Choose <b>File &gt; Select Folder</b> to select an image dataset. Missing caption files are created beside their images.</p>
 
       <h4>Selecting cards</h4>
       <p>Click a card title to select it. Hold <kbd>Ctrl</kbd> to select several cards, or press <kbd>Ctrl+A</kbd> to select all cards.</p>
@@ -6677,8 +6891,8 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
       <p>Open <b>Edit &gt; Masking</b> to configure automatic masks or enable masking mode. With Brush selected, the left mouse button paints the mask and the right mouse button erases it. Fill supports the same left and right button behavior.</p>
 
       <h4>Captions and text</h4>
-      <p><b>Tools &gt; Auto-caption</b> generates captions. Qwen3-VL and External API system prompts have separate Load, Save, and Delete preset controls; the built-in <b>Simple character caption</b> preset cannot be changed or deleted. <b>Edit &gt; Text tools</b> applies batch text changes to the cards, and <b>Tools &gt; JSON captions</b> opens the structured Ideogram JSON editor. Add object or text elements in Elements, and add or define their normalized coordinates in the separate BBOXes section. Raw JSON remains available for advanced editing. Text tools changes are written only when you use a card Save button or Save all; Undo and Reset discard them.</p>
-      <p><b>Tools &gt; Remove watermark</b> opens a temporary inpainting editor. Paint the watermark manually or let Batch removal detect it separately in each image with Qwen3-VL. Results remain previews until you use a card Save button or Save all.</p>
+      <p><b>Tools &gt; Auto-caption</b> generates captions. Qwen3-VL and External API system prompts have separate Load, Save, and Delete preset controls; the built-in <b>Simple character caption</b> preset cannot be changed or deleted. <b>Edit &gt; Text tools</b> applies batch text changes to the cards, and <b>Tools &gt; JSON captions</b> opens the structured Ideogram JSON editor. Add object or text elements in Elements, edit palettes through their color swatches and + buttons, and add or define normalized coordinates in the separate BBOXes section. Use Edit raw for direct JSON text editing. Text tools changes are written only when you use a card Save button or Save all; Undo and Reset discard them.</p>
+      <p><b>Edit &gt; Remove watermark</b> opens a temporary inpainting editor. Manual removal is recommended because experimental Batch removal can be unreliable; its Qwen3-VL detection still processes every image separately. Results remain previews until you use a card Save button or Save all.</p>
 
       <h4>Adding images</h4>
       <p>Use <b>File &gt; Add Images</b>, drag images into the page, or paste them from the clipboard. Dragged and pasted images are converted to lossless PNG files.</p>
@@ -6802,10 +7016,24 @@ function closeHelpModal() {
 }
 openHelpModalBtn?.addEventListener('click', openHelpModal);
 closeHelpModalBtn?.addEventListener('click', closeHelpModal);
+const aboutModalBackdrop = document.getElementById('aboutModalBackdrop');
+const openAboutModalBtn = document.getElementById('openAboutModalBtn');
+const closeAboutModalBtn = document.getElementById('closeAboutModalBtn');
+const closeAboutModalActionBtn = document.getElementById('closeAboutModalActionBtn');
+function openAboutModal() {
+  aboutModalBackdrop?.classList.add('open');
+}
+function closeAboutModal() {
+  aboutModalBackdrop?.classList.remove('open');
+}
+openAboutModalBtn?.addEventListener('click', openAboutModal);
+closeAboutModalBtn?.addEventListener('click', closeAboutModal);
+closeAboutModalActionBtn?.addEventListener('click', closeAboutModal);
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') {
     closeSettingsModal();
     closeHelpModal();
+    closeAboutModal();
   }
 });
 const JOY_MODEL_OPTIONS = JSON.parse(document.getElementById('joy-model-data').textContent);
@@ -7815,7 +8043,7 @@ async function setMaskMode(active, purpose = 'training') {
   if (nextActive === maskModeActive && (!nextActive || nextPurpose === maskModePurpose)) return;
   if (nextActive && maskModeActive && nextPurpose !== maskModePurpose) {
     if (maskModePurpose === 'training' && Array.from(maskStates.values()).some(state => state?.dirty)) {
-      await appAlert('Save or reset the unsaved training masks before opening the watermark editor.');
+      await appAlert('Save or reset the unsaved training masks before opening watermark removal mode.');
       return;
     }
     if (maskModePurpose === 'watermark' && Array.from(watermarkMaskStates.values()).some(state => state?.dirty)) {
@@ -7827,7 +8055,7 @@ async function setMaskMode(active, purpose = 'training') {
   const btn = document.getElementById('maskModeBtn');
   if (nextActive) {
     if (!HAS_OPEN_FOLDER) {
-      await appAlert('Open a folder before using Masking mode.');
+      await appAlert('Select a folder before using Masking mode.');
       return;
     }
     btn?.setAttribute('aria-busy', 'true');
@@ -7851,6 +8079,7 @@ async function setMaskMode(active, purpose = 'training') {
     btn?.setAttribute('aria-pressed', maskModePurpose === 'training' ? 'true' : 'false');
     updateMaskModeModalButton();
     updateWatermarkModeButton();
+    updateModeExitButton();
     setMaskTool(currentMaskTool);
     syncMaskSizeControls();
     syncMaskFillToleranceControls();
@@ -7875,13 +8104,28 @@ async function setMaskMode(active, purpose = 'training') {
   updateWatermarkModeButton();
   document.querySelectorAll('.undo-btn').forEach(button => { button.disabled = false; });
   document.querySelectorAll('.redo-btn').forEach(button => { button.disabled = true; });
-  setStatusbarMessage(maskModePurpose === 'watermark' ? 'Watermark editor closed.' : 'Masking mode closed.');
+  setStatusbarMessage(maskModePurpose === 'watermark' ? 'Watermark removal mode closed.' : 'Masking mode closed.');
   maskModePurpose = 'training';
+  updateModeExitButton();
 }
 
 function toggleMaskMode() {
   setMaskMode(!maskModeActive);
 }
+
+function updateModeExitButton() {
+  const button = document.getElementById('exitMaskModeBtn');
+  const label = document.getElementById('exitMaskModeLabel');
+  if (!button) return;
+  button.hidden = !maskModeActive;
+  const modeName = maskModePurpose === 'watermark' ? 'Watermark removal' : 'Masking';
+  if (label) label.textContent = `Exit ${modeName} mode`;
+  button.title = `Exit ${modeName.toLowerCase()} mode`;
+}
+
+document.getElementById('exitMaskModeBtn')?.addEventListener('click', () => {
+  setMaskMode(false, maskModePurpose);
+});
 
 function isImageFile(file) {
   return !!file && (
@@ -7939,7 +8183,7 @@ async function uploadImageFiles(files, sourceLabel = 'selected') {
   const imageFiles = imageFilesFromFileList(files);
   if (!imageFiles.length) return;
   if (!HAS_OPEN_FOLDER) {
-    await appAlert('Open a folder before adding images.');
+    await appAlert('Select a folder before adding images.');
     return;
   }
   if (typeof hasUnsavedChanges === 'function' && hasUnsavedChanges()) {
@@ -8117,10 +8361,10 @@ document.getElementById('openFileManagerBtn')?.addEventListener('click', async (
     });
     const data = await res.json();
     if (!res.ok || !data.ok) {
-      await appAlert(data.error || 'Failed to open folder.');
+      await appAlert(data.error || 'Failed to select folder.');
     }
   } catch (e) {
-    await appAlert('Failed to open folder.');
+    await appAlert('Failed to select folder.');
   }
 });
 
@@ -8726,6 +8970,21 @@ function attachCardEventListeners(card) {
   bindZoomButton('.zoom-default-btn', () => applyMediaZoom(index, 1));
   bindZoomButton('.zoom-actual-btn', () => setActualMediaZoom(index));
 
+  const zoomStage = card.querySelector('.crop-stage');
+  if (zoomStage && !zoomStage.dataset.boundWheelZoom) {
+    zoomStage.dataset.boundWheelZoom = '1';
+    zoomStage.addEventListener('wheel', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const pixelDelta = event.deltaMode === 1
+        ? event.deltaY * 16
+        : event.deltaMode === 2
+          ? event.deltaY * Math.max(zoomStage.clientHeight, 1)
+          : event.deltaY;
+      applyMediaZoom(index, getMediaZoom(index) * Math.exp(-pixelDelta * 0.002));
+    }, { passive: false });
+  }
+
   const cardHead = card.querySelector('.card-head');
   if (cardHead && !cardHead.dataset.boundClick) {
     cardHead.dataset.boundClick = '1';
@@ -9180,6 +9439,7 @@ function attachCropper(index) {
   if (!stage || stage.dataset.bound === '1') return;
   stage.dataset.bound = '1';
 
+  const minNewCropDragPx = 6;
   ensureState(index);
   let drag = null;
 
@@ -9229,7 +9489,7 @@ function attachCropper(index) {
     }
 
     if (e.target.id === `crop-overlay-${index}` || e.target === stage || e.target.id === `crop-image-${index}`) {
-      drag = { mode: 'new', start, orig: null };
+      drag = { mode: 'new', start, orig: null, clientX: e.clientX, clientY: e.clientY };
       state.crop = {
         x: start.x,
         y: start.y,
@@ -9316,9 +9576,21 @@ function attachCropper(index) {
     markUnsaved(index);
   });
 
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('mouseup', (e) => {
     if (!drag) return;
+    const completedDrag = drag;
     drag = null;
+    if (
+      completedDrag.mode === 'new' &&
+      Math.hypot(e.clientX - completedDrag.clientX, e.clientY - completedDrag.clientY) < minNewCropDragPx
+    ) {
+      const state = ensureState(index);
+      state.crop = null;
+      state.upscale = false;
+      cropStates.set(index, state);
+      renderCrop(index);
+      markUnsaved(index);
+    }
   });
 
   window.addEventListener('resize', () => {
@@ -9738,6 +10010,7 @@ document.querySelectorAll('.pair-card').forEach(card => attachCardEventListeners
 
 document.addEventListener('click', event => {
   if (event.target.closest('.pair-card')) return;
+  if (event.target.closest('.top')) return;
   if (event.target.closest('.modal-backdrop, .app-dialog-backdrop, .joy-modal, .category-popover')) return;
   clearSimpleCardSelection();
 });
@@ -9796,7 +10069,7 @@ document.getElementById('openFolderForm')?.addEventListener('submit', async even
       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
     });
     const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || 'Open folder failed.');
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Select folder failed.');
     if (data.selected) {
       const nonPngCount = Number(data.non_png_count || 0);
       if (nonPngCount > 0) {
@@ -9814,7 +10087,7 @@ document.getElementById('openFolderForm')?.addEventListener('submit', async even
       window.location.assign('/');
     }
   } catch (err) {
-    await appAlert(err?.message || 'Open folder failed.');
+    await appAlert(err?.message || 'Select folder failed.');
   }
 });
 document.getElementById('refreshFolderBtn')?.addEventListener('click', async () => {
@@ -10133,7 +10406,7 @@ async function detectWatermarkMaskForCard(card) {
 async function runWatermarkBatch() {
   if (watermarkBatchRunActive) return;
   if (!HAS_OPEN_FOLDER) {
-    await appAlert('Open a folder before running Batch watermark removal.');
+    await appAlert('Select a folder before running Batch watermark removal.');
     return;
   }
   const scope = watermarkBatchScope?.value || 'selected';
@@ -10220,7 +10493,7 @@ function updateWatermarkModeButton() {
   const btn = document.getElementById('watermarkToggleModeBtn');
   if (!btn) return;
   const active = maskModeActive && maskModePurpose === 'watermark';
-  btn.textContent = active ? 'Disable watermark editor' : 'Enable watermark editor';
+  btn.textContent = active ? 'Disable watermark removal mode' : 'Enable watermark removal mode';
   btn.classList.toggle('is-active', active);
   btn.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
@@ -10269,7 +10542,7 @@ function getMaskRunCards() {
 async function runMaskBatch() {
   if (maskRunActive) return;
   if (!HAS_OPEN_FOLDER) {
-    await appAlert('Open a folder before running Auto mask.');
+    await appAlert('Select a folder before running Auto mask.');
     return;
   }
   const settings = getMaskSettings();
@@ -10623,8 +10896,55 @@ function syncCaptionFormatGenerationDefaults(captionFormat) {
 }
 
 
+const captionBackendDescriptions = {
+  joycaption: 'Best for detailed natural-language captions for general images and LoRA training data.',
+  wd14: 'Best for concise Danbooru-style tags, especially for anime, illustrations, and character datasets.',
+  qwen3_vl: 'Best for prompt-guided natural-language captions, character and scene descriptions, and structured Ideogram JSON.',
+  external_api: 'Best when you want to use a remote vision model with a custom prompt; capabilities depend on the configured API model.',
+};
+let captionBackendTooltip = null;
+
+function positionCaptionBackendTooltip(select) {
+  if (!captionBackendTooltip) return;
+  const rect = select.getBoundingClientRect();
+  const margin = 8;
+  captionBackendTooltip.style.left = `${clamp(rect.left, margin, window.innerWidth - captionBackendTooltip.offsetWidth - margin)}px`;
+  const below = rect.bottom + 6;
+  const above = rect.top - captionBackendTooltip.offsetHeight - 6;
+  captionBackendTooltip.style.top = `${below + captionBackendTooltip.offsetHeight <= window.innerHeight - margin ? below : Math.max(margin, above)}px`;
+}
+
+function syncCaptionBackendTooltip(select) {
+  if (!captionBackendTooltip) return;
+  captionBackendTooltip.textContent = captionBackendDescriptions[select.value] || '';
+  if (captionBackendTooltip.classList.contains('open')) positionCaptionBackendTooltip(select);
+}
+
+function bindCaptionBackendTooltip(select) {
+  if (!select || select.dataset.tooltipBound === '1') return;
+  select.dataset.tooltipBound = '1';
+  captionBackendTooltip = document.createElement('div');
+  captionBackendTooltip.id = 'captionBackendTooltip';
+  captionBackendTooltip.className = 'caption-backend-tooltip';
+  captionBackendTooltip.setAttribute('role', 'tooltip');
+  document.body.appendChild(captionBackendTooltip);
+  select.setAttribute('aria-describedby', captionBackendTooltip.id);
+  const show = () => {
+    syncCaptionBackendTooltip(select);
+    captionBackendTooltip.classList.add('open');
+    positionCaptionBackendTooltip(select);
+  };
+  const hide = () => captionBackendTooltip.classList.remove('open');
+  select.addEventListener('mouseenter', show);
+  select.addEventListener('mouseleave', hide);
+  select.addEventListener('focus', show);
+  select.addEventListener('blur', hide);
+  select.addEventListener('change', () => syncCaptionBackendTooltip(select));
+}
+
 function updateCaptionBackendUI() {
   const backendSelect = document.getElementById('joy_backend');
+  bindCaptionBackendTooltip(backendSelect);
   const captionFormat = document.getElementById('joy_caption_format')?.value || 'standard_text';
   const ideogramJson = captionFormat === 'ideogram4_json';
   syncCaptionFormatGenerationDefaults(captionFormat);
@@ -10650,6 +10970,7 @@ function updateCaptionBackendUI() {
   if (externalName) externalName.disabled = ideogramJson;
   Object.keys(systemPromptPresetConfigs).forEach(updateSystemPromptPresetControls);
   const backend = backendSelect?.value || 'joycaption';
+  if (backendSelect) syncCaptionBackendTooltip(backendSelect);
   document.querySelectorAll('.joy-only').forEach(el => {
     el.style.display = backend === 'joycaption' ? '' : 'none';
   });
@@ -11923,19 +12244,69 @@ const jsonAddObjectBtn = document.getElementById("jsonAddObjectBtn");
 const jsonAddTextBtn = document.getElementById("jsonAddTextBtn");
 const jsonPrevBtn = document.getElementById("jsonPrevBtn");
 const jsonNextBtn = document.getElementById("jsonNextBtn");
+const jsonCopyBtn = document.getElementById("jsonCopyBtn");
+const jsonPasteBtn = document.getElementById("jsonPasteBtn");
+const jsonEditRawBtn = document.getElementById("jsonEditRawBtn");
 const jsonValidateBtn = document.getElementById("jsonValidateBtn");
 const jsonValidateAllBtn = document.getElementById("jsonValidateAllBtn");
 const jsonSwapBboxBtn = document.getElementById("jsonSwapBboxBtn");
 const jsonSaveBtn = document.getElementById("jsonSaveBtn");
+const jsonRawModalBackdrop = document.getElementById("jsonRawModalBackdrop");
+const jsonRawEditor = document.getElementById("jsonRawEditor");
+const jsonRawCloseBtn = document.getElementById("jsonRawCloseBtn");
+const jsonRawCancelBtn = document.getElementById("jsonRawCancelBtn");
+const jsonRawSaveBtn = document.getElementById("jsonRawSaveBtn");
+const jsonColorMenu = document.getElementById("jsonColorMenu");
+const jsonColorPicker = document.getElementById("jsonColorPicker");
+const jsonColorHex = document.getElementById("jsonColorHex");
+const jsonColorRemoveBtn = document.getElementById("jsonColorRemoveBtn");
+const jsonColorCancelBtn = document.getElementById("jsonColorCancelBtn");
+const jsonColorApplyBtn = document.getElementById("jsonColorApplyBtn");
 let jsonCaptionItems = [];
 let jsonCaptionIndex = 0;
 let jsonActiveElementIndex = -1;
+let jsonColorEditContext = null;
 
 function setJsonStatus(text, kind = "") {
   if (!jsonStatus) return;
   jsonStatus.textContent = text || "";
   jsonStatus.classList.toggle("ok", kind === "ok");
   jsonStatus.classList.toggle("error", kind === "error");
+}
+
+async function copyCurrentJsonToClipboard() {
+  if (!jsonEditor) return;
+  try {
+    await navigator.clipboard.writeText(jsonEditor.value);
+    setJsonStatus("JSON prompt copied to the clipboard.", "ok");
+  } catch {
+    setJsonStatus("Could not copy JSON. Allow clipboard access and try again.", "error");
+  }
+}
+
+async function pasteJsonFromClipboard() {
+  if (!jsonEditor) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) {
+      setJsonStatus("The clipboard does not contain a JSON prompt.", "error");
+      return;
+    }
+    let data = null;
+    try { data = JSON.parse(text); } catch (error) {}
+    if (data) {
+      jsonEditor.value = JSON.stringify(data, null, 2);
+      renderJsonStructuredForm(data);
+      renderJsonBboxes();
+      setJsonStatus("JSON prompt pasted from the clipboard. Save to write the change.", "ok");
+    } else {
+      openRawJsonEditor(text);
+      renderJsonBboxes();
+      setJsonStatus("Clipboard text is not valid JSON. Fix it in Edit raw before saving.", "error");
+    }
+  } catch {
+    setJsonStatus("Could not read the clipboard. Allow clipboard access and try again.", "error");
+  }
 }
 
 function parseJsonEditorValue() {
@@ -11945,6 +12316,34 @@ function parseJsonEditorValue() {
   } catch {
     return null;
   }
+}
+
+function openRawJsonEditor(text = null) {
+  if (!jsonRawModalBackdrop || !jsonRawEditor) return;
+  jsonRawEditor.value = text === null ? (jsonEditor?.value || "") : String(text);
+  jsonRawModalBackdrop.classList.add("open");
+  requestAnimationFrame(() => jsonRawEditor.focus());
+}
+
+function closeRawJsonEditor() {
+  jsonRawModalBackdrop?.classList.remove("open");
+}
+
+function applyRawJsonEditor() {
+  if (!jsonRawEditor || !jsonEditor) return;
+  let data;
+  try {
+    data = JSON.parse(jsonRawEditor.value || "{}");
+  } catch (error) {
+    setJsonStatus(`Raw JSON parse failed: ${error.message}`, "error");
+    jsonRawEditor.focus();
+    return;
+  }
+  jsonEditor.value = JSON.stringify(data, null, 2);
+  renderJsonStructuredForm(data);
+  renderJsonBboxes();
+  closeRawJsonEditor();
+  setJsonStatus("Unsaved raw JSON changes. Validate or Save to continue.");
 }
 
 function currentJsonItem() {
@@ -11977,6 +12376,129 @@ function jsonPalette(value, limit) {
     .map(item => String(item || "").trim().toUpperCase())
     .filter(Boolean)
     .slice(0, limit);
+}
+
+function isJsonHexColor(value) {
+  return /^#[0-9A-F]{6}$/.test(String(value || "").trim().toUpperCase());
+}
+
+function jsonElementColorTheme(element) {
+  const palette = jsonPalette(element?.color_palette, 5).filter(isJsonHexColor);
+  if (!palette.length) return { hex: "#22C55E", rgb: "34, 197, 94" };
+  const totals = palette.reduce((sum, color) => {
+    sum[0] += parseInt(color.slice(1, 3), 16);
+    sum[1] += parseInt(color.slice(3, 5), 16);
+    sum[2] += parseInt(color.slice(5, 7), 16);
+    return sum;
+  }, [0, 0, 0]);
+  const rgb = totals.map(value => Math.round(value / palette.length));
+  const hex = `#${rgb.map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  return { hex, rgb: rgb.join(", ") };
+}
+
+function jsonColorPaletteMarkup(value, scope, elementIndex, limit) {
+  const palette = jsonPalette(value, limit).filter(isJsonHexColor);
+  const indexAttribute = Number.isInteger(elementIndex)
+    ? ` data-json-color-element-index="${elementIndex}"`
+    : "";
+  const swatches = palette.map((color, colorIndex) => {
+    const normalized = color.toUpperCase();
+    return `<button type="button" class="json-color-swatch" style="--json-swatch:${normalized}" data-json-color-scope="${scope}"${indexAttribute} data-json-color-index="${colorIndex}" aria-label="Edit color ${normalized}" title="${normalized}"></button>`;
+  }).join("");
+  const add = palette.length < limit
+    ? `<button type="button" class="json-color-add" data-json-color-scope="${scope}"${indexAttribute} data-json-color-index="-1" aria-label="Add color" title="Add color">+</button>`
+    : "";
+  return swatches + add;
+}
+
+function jsonColorPaletteTarget(data, context = jsonColorEditContext) {
+  if (!context || !data) return null;
+  if (context.scope === "style") {
+    return { owner: data.style_description, limit: 16 };
+  }
+  if (context.scope === "element") {
+    const element = getIdeogramElements(data)[context.elementIndex];
+    return element ? { owner: element, limit: 5 } : null;
+  }
+  return null;
+}
+
+function closeJsonColorMenu() {
+  if (jsonColorMenu) jsonColorMenu.hidden = true;
+  jsonColorEditContext = null;
+}
+
+function positionJsonColorMenu(anchor) {
+  if (!jsonColorMenu || !anchor) return;
+  const gap = 6;
+  const anchorRect = anchor.getBoundingClientRect();
+  const menuRect = jsonColorMenu.getBoundingClientRect();
+  let left = anchorRect.left;
+  let top = anchorRect.bottom + gap;
+  if (left + menuRect.width > window.innerWidth - gap) left = window.innerWidth - menuRect.width - gap;
+  if (top + menuRect.height > window.innerHeight - gap) top = anchorRect.top - menuRect.height - gap;
+  jsonColorMenu.style.left = `${Math.max(gap, left)}px`;
+  jsonColorMenu.style.top = `${Math.max(gap, top)}px`;
+}
+
+function openJsonColorMenu(anchor) {
+  if (!jsonColorMenu || !jsonColorPicker || !jsonColorHex) return;
+  const scope = anchor.dataset.jsonColorScope;
+  const colorIndex = Number(anchor.dataset.jsonColorIndex);
+  const elementIndex = Number(anchor.dataset.jsonColorElementIndex);
+  const data = currentJsonFormData();
+  const context = {
+    scope,
+    colorIndex: Number.isInteger(colorIndex) ? colorIndex : -1,
+    elementIndex: Number.isInteger(elementIndex) ? elementIndex : -1,
+  };
+  const target = jsonColorPaletteTarget(data, context);
+  if (!target) return;
+  const palette = jsonPalette(target.owner.color_palette, target.limit).filter(isJsonHexColor);
+  const existing = context.colorIndex >= 0 ? palette[context.colorIndex] : "#FFFFFF";
+  jsonColorEditContext = context;
+  jsonColorPicker.value = existing.toLowerCase();
+  jsonColorHex.value = existing.toUpperCase();
+  if (jsonColorRemoveBtn) jsonColorRemoveBtn.hidden = context.colorIndex < 0;
+  jsonColorMenu.hidden = false;
+  positionJsonColorMenu(anchor);
+  jsonColorHex.focus();
+  jsonColorHex.select();
+}
+
+function applyJsonColorEdit() {
+  if (!jsonColorEditContext || !jsonColorHex) return;
+  const color = jsonColorHex.value.trim().toUpperCase();
+  if (!isJsonHexColor(color)) {
+    setJsonStatus("Color must use #RRGGBB hexadecimal format.", "error");
+    jsonColorHex.focus();
+    return;
+  }
+  const data = currentJsonFormData();
+  const target = jsonColorPaletteTarget(data);
+  if (!target) return;
+  const palette = jsonPalette(target.owner.color_palette, target.limit).filter(isJsonHexColor);
+  if (jsonColorEditContext.colorIndex >= 0) {
+    palette[jsonColorEditContext.colorIndex] = color;
+  } else if (palette.length < target.limit) {
+    palette.push(color);
+  }
+  target.owner.color_palette = palette;
+  closeJsonColorMenu();
+  writeJsonStructuredData(data, { rerenderStructure: true });
+}
+
+function removeJsonColor() {
+  if (!jsonColorEditContext || jsonColorEditContext.colorIndex < 0) return;
+  const data = currentJsonFormData();
+  const target = jsonColorPaletteTarget(data);
+  if (!target) return;
+  const palette = jsonPalette(target.owner.color_palette, target.limit).filter(isJsonHexColor);
+  palette.splice(jsonColorEditContext.colorIndex, 1);
+  if (palette.length) target.owner.color_palette = palette;
+  else delete target.owner.color_palette;
+  closeJsonColorMenu();
+  writeJsonStructuredData(data, { rerenderStructure: true });
 }
 
 function canonicalJsonElement(source = {}, forcedType = "") {
@@ -12073,8 +12595,9 @@ function renderJsonElementEditors(data) {
   }
   jsonElementsForm.innerHTML = elements.map((element, index) => {
     const type = element?.type === "text" ? "text" : "obj";
+    const theme = jsonElementColorTheme(element);
     return `
-      <article class="json-element-editor${index === jsonActiveElementIndex ? " active" : ""}" data-json-element-editor="${index}">
+      <article class="json-element-editor${index === jsonActiveElementIndex ? " active" : ""}" data-json-element-editor="${index}" style="--json-element-color:${theme.hex};--json-element-rgb:${theme.rgb}">
         <div class="json-element-editor-head">
           <strong>${escapeHtml(jsonElementTitle(element, index))}</strong>
           <button type="button" data-json-element-action="remove" data-json-element-index="${index}">Remove</button>
@@ -12097,10 +12620,12 @@ function renderJsonElementEditors(data) {
             Description
             <textarea data-json-element-field="desc" data-json-element-index="${index}">${escapeHtml(element.desc || "")}</textarea>
           </label>
-          <label class="json-form-field full">
-            Color palette
-            <input type="text" value="${escapeHtml(jsonPalette(element.color_palette, 5).join(", "))}" data-json-element-field="color_palette" data-json-element-index="${index}" placeholder="#RRGGBB, #RRGGBB">
-          </label>
+          <div class="json-form-field full">
+            <span>Color palette</span>
+            <div class="json-color-palette" data-json-palette-scope="element" data-json-color-element-index="${index}" aria-label="Element ${index + 1} color palette">
+              ${jsonColorPaletteMarkup(element.color_palette, "element", index, 5)}
+            </div>
+          </div>
         </div>
       </article>
     `;
@@ -12150,13 +12675,16 @@ function renderJsonStructuredForm(source = null) {
     jsonStyleVariant: variant,
     jsonStyleVariantDescription: style[variant],
     jsonStyleMedium: style.medium,
-    jsonStylePalette: jsonPalette(style.color_palette, 16).join(", "),
     jsonBackground: data.compositional_deconstruction.background,
   };
   Object.entries(values).forEach(([id, value]) => {
     const element = document.getElementById(id);
     if (element) element.value = value ?? "";
   });
+  const stylePalette = document.getElementById("jsonStylePalette");
+  if (stylePalette) {
+    stylePalette.innerHTML = jsonColorPaletteMarkup(style.color_palette, "style", null, 16);
+  }
   renderJsonElementEditors(data);
   renderJsonBboxEditors(data);
 }
@@ -12195,7 +12723,8 @@ function renderJsonElementList(data) {
   }
   jsonElementList.innerHTML = elements.map((element, index) => {
     const label = `${index + 1}. ${element.type || "obj"}${Array.isArray(element.bbox) ? " bbox" : ""} - ${String(element.desc || element.text || "").slice(0, 90)}`;
-    return `<button type="button" class="json-element-item${index === jsonActiveElementIndex ? " active" : ""}" data-json-element="${index}">${escapeHtml(label)}</button>`;
+    const theme = jsonElementColorTheme(element);
+    return `<button type="button" class="json-element-item${index === jsonActiveElementIndex ? " active" : ""}" data-json-element="${index}" style="background:rgba(${theme.rgb},.2);border-left:3px solid ${theme.hex}">${escapeHtml(label)}</button>`;
   }).join("");
 }
 
@@ -12219,6 +12748,12 @@ function renderJsonBboxes() {
     box.className = `json-bbox${index === jsonActiveElementIndex ? " active" : ""}`;
     box.dataset.jsonElement = String(index);
     box.title = element.desc || element.text || `Element ${index + 1}`;
+    const theme = jsonElementColorTheme(element);
+    box.style.setProperty("--json-element-color", theme.hex);
+    box.style.setProperty("--json-bbox-bg", `rgba(${theme.rgb}, .12)`);
+    box.style.setProperty("--json-bbox-hover-bg", `rgba(${theme.rgb}, .2)`);
+    box.style.setProperty("--json-bbox-active-bg", `rgba(${theme.rgb}, .22)`);
+    box.style.setProperty("--json-bbox-active-hover-bg", `rgba(${theme.rgb}, .26)`);
     box.style.left = `${offsetLeft + (xMin / 1000) * imageRect.width}px`;
     box.style.top = `${offsetTop + (yMin / 1000) * imageRect.height}px`;
     box.style.width = `${Math.max(2, ((xMax - xMin) / 1000) * imageRect.width)}px`;
@@ -12393,6 +12928,8 @@ async function openJsonModal() {
 }
 
 function closeJsonModal() {
+  closeRawJsonEditor();
+  closeJsonColorMenu();
   jsonModalBackdrop?.classList.remove("open");
 }
 
@@ -12512,6 +13049,12 @@ jsonNextBtn?.addEventListener("click", () => {
   jsonCaptionIndex = (jsonCaptionIndex + 1) % jsonCaptionItems.length;
   renderJsonCaptionItem();
 });
+jsonCopyBtn?.addEventListener("click", copyCurrentJsonToClipboard);
+jsonPasteBtn?.addEventListener("click", pasteJsonFromClipboard);
+jsonEditRawBtn?.addEventListener("click", () => openRawJsonEditor());
+jsonRawCloseBtn?.addEventListener("click", closeRawJsonEditor);
+jsonRawCancelBtn?.addEventListener("click", closeRawJsonEditor);
+jsonRawSaveBtn?.addEventListener("click", applyRawJsonEditor);
 jsonValidateBtn?.addEventListener("click", () => validateCurrentJson({ applyNormalized: true }));
 jsonValidateAllBtn?.addEventListener("click", validateAllJsonCaptions);
 jsonSwapBboxBtn?.addEventListener("click", swapCurrentJsonBboxOrder);
@@ -12527,11 +13070,7 @@ jsonStructuredForm?.addEventListener("input", event => {
   else if (field === "style_variant") setJsonStyleVariant(data, event.target.value);
   else if (field === "style_variant_description") style[jsonStyleVariant(data)] = event.target.value;
   else if (field === "style_medium") style.medium = event.target.value;
-  else if (field === "style_palette") {
-    const palette = jsonPalette(event.target.value, 16);
-    if (palette.length) style.color_palette = palette;
-    else delete style.color_palette;
-  } else if (field === "background") {
+  else if (field === "background") {
     data.compositional_deconstruction.background = event.target.value;
   }
   writeJsonStructuredData(data, { rerenderStructure: field === "style_variant" });
@@ -12546,10 +13085,6 @@ jsonStructuredForm?.addEventListener("input", event => {
   const element = elements[index];
   if (field === "type") {
     elements[index] = canonicalJsonElement(element, event.target.value);
-  } else if (field === "color_palette") {
-    const palette = jsonPalette(event.target.value, 5);
-    if (palette.length) element.color_palette = palette;
-    else delete element.color_palette;
   } else {
     element[field] = event.target.value;
   }
@@ -12597,6 +13132,48 @@ jsonElementsForm?.addEventListener("click", event => {
   }
   const editor = event.target.closest("[data-json-element-editor]");
   if (editor) selectJsonElement(Number(editor.dataset.jsonElementEditor));
+});
+jsonStructuredForm?.addEventListener("click", event => {
+  const colorTrigger = event.target.closest("[data-json-color-scope][data-json-color-index]");
+  if (!colorTrigger) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openJsonColorMenu(colorTrigger);
+});
+jsonColorPicker?.addEventListener("input", () => {
+  if (jsonColorHex) jsonColorHex.value = jsonColorPicker.value.toUpperCase();
+});
+jsonColorHex?.addEventListener("input", () => {
+  const value = jsonColorHex.value.trim().toUpperCase();
+  if (jsonColorPicker && isJsonHexColor(value)) jsonColorPicker.value = value.toLowerCase();
+});
+jsonColorHex?.addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    applyJsonColorEdit();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    closeJsonColorMenu();
+  }
+});
+jsonColorApplyBtn?.addEventListener("click", applyJsonColorEdit);
+jsonColorRemoveBtn?.addEventListener("click", removeJsonColor);
+jsonColorCancelBtn?.addEventListener("click", closeJsonColorMenu);
+document.addEventListener("click", event => {
+  if (jsonColorMenu?.hidden || jsonColorMenu?.contains(event.target) || event.target.closest("[data-json-color-scope][data-json-color-index]")) return;
+  closeJsonColorMenu();
+});
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  if (!jsonColorMenu?.hidden) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeJsonColorMenu();
+  } else if (jsonRawModalBackdrop?.classList.contains("open")) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeRawJsonEditor();
+  }
 });
 jsonBboxForm?.addEventListener("click", event => {
   const action = event.target.closest("[data-json-bbox-action]");
@@ -12962,7 +13539,7 @@ def add_files():
     global current_folder, pairs_cache, message, folder_name
 
     if not current_folder or not os.path.isdir(current_folder):
-        message = "No folder is open. Open a folder first."
+        message = "No folder is selected. Select a folder first."
         return redirect(url_for("index"))
 
     root = tk.Tk()
@@ -13039,7 +13616,7 @@ def upload_images():
     global current_folder, pairs_cache, message, folder_name
 
     if not current_folder or not os.path.isdir(current_folder):
-        return jsonify({"ok": False, "error": "Open a folder before adding images."}), 400
+        return jsonify({"ok": False, "error": "Select a folder before adding images."}), 400
 
     uploads = request.files.getlist("images")
     if not uploads:
@@ -13153,7 +13730,7 @@ def open_folder():
 def refresh_folder():
     global pairs_cache, message, category_assignments, selected_crop_base
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     before = {name for name, _ in pairs_cache}
     missing = ensure_missing_txt(current_folder)
@@ -13181,7 +13758,7 @@ def refresh_folder():
 def convert_images_to_png():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     image_names = [f for f in sorted(os.listdir(current_folder)) if f.lower().endswith(IMAGE_EXTENSIONS)]
     if not image_names:
@@ -13278,7 +13855,7 @@ def image(filename):
 @app.route("/mask/<path:filename>")
 def mask_image(filename):
     if not current_folder:
-        return "No folder opened.", 404
+        return "No folder selected.", 404
     mask_path = ensure_mask_for_image(current_folder, filename)
     if not mask_path or not mask_path.exists():
         return "Mask not found.", 404
@@ -13289,7 +13866,7 @@ def mask_image(filename):
 def ensure_masks():
     global message
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     try:
         created, existing = ensure_masks_for_folder(current_folder)
     except Exception as e:
@@ -13301,7 +13878,7 @@ def ensure_masks():
 @app.route("/save_mask", methods=["POST"])
 def save_mask():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     img_name = Path(str(data.get("img_name") or "")).name
     data_url = str(data.get("mask_data") or "")
@@ -13332,7 +13909,7 @@ def save_mask():
 @app.route("/auto_mask", methods=["POST"])
 def auto_mask():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     img_name = Path(str(data.get("img_name") or "")).name
     model_name = str(data.get("model") or DEFAULT_AUTO_MASK_MODEL).strip() or DEFAULT_AUTO_MASK_MODEL
@@ -13361,7 +13938,7 @@ def auto_mask():
 @app.route("/remove_watermark", methods=["POST"])
 def remove_watermark():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     img_name = Path(str(data.get("img_name") or "")).name
     if not img_name or not pair_exists(current_folder, img_name):
@@ -13387,7 +13964,7 @@ def remove_watermark():
 @app.route("/detect_watermark", methods=["POST"])
 def detect_watermark():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     if joycaption_status.get("running"):
         return jsonify({"ok": False, "error": "Wait for captioning to finish first."}), 409
     if category_auto_status.get("running"):
@@ -13416,7 +13993,7 @@ def category_icon(filename):
 def rename_all_pairs():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     prefix = str(data.get("prefix", ""))
@@ -13483,7 +14060,7 @@ def rename_all_pairs():
 @app.route("/captions_json")
 def captions_json():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     caption_format = normalize_caption_format(request.args.get("caption_format"))
     pairs = []
@@ -13524,7 +14101,7 @@ def ideogram_json_validate():
 @app.route("/ideogram_json_validate_all")
 def ideogram_json_validate_all():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     items = []
     counts = {"valid": 0, "repairable": 0, "invalid": 0, "missing": 0}
@@ -13557,7 +14134,7 @@ def ideogram_json_validate_all():
 def save_pair():
     global pairs_cache, message
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True)
     img_name = data.get("img_name")
@@ -13680,7 +14257,7 @@ def save_pair():
 def clone_pair():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     img_name = data.get("img_name")
@@ -13731,7 +14308,7 @@ def clone_pair():
 def rename_pair():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     img_name = data.get("img_name")
@@ -13786,7 +14363,7 @@ def rename_pair():
 def delete_pair():
     global pairs_cache, message, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True)
     img_name = data.get("img_name")
@@ -13816,7 +14393,7 @@ def delete_pair():
 def set_category():
     global category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
     img_name = data.get("img_name")
@@ -13977,7 +14554,7 @@ def category_auto_worker(folder, options, folders, groups, image_names):
 @app.route("/auto_categorize_start", methods=["POST"])
 def auto_categorize_start():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     if category_auto_status.get("running"):
         return jsonify({"ok": False, "error": "Auto-categorization is already running."}), 400
     if joycaption_status.get("running"):
@@ -14039,7 +14616,7 @@ def auto_categorize_interrupt():
 def apply_category_suggestions():
     global category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     suggestions = (request.get_json(force=True) or {}).get("suggestions") or []
     changed = []
     for suggestion in suggestions:
@@ -14058,7 +14635,7 @@ def apply_category_suggestions():
 @app.route("/category_state")
 def category_state():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     images = [
         {
             "name": img_name,
@@ -14090,7 +14667,7 @@ def category_presets():
 @app.route("/save_category_preset", methods=["POST"])
 def save_category_preset():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     try:
         name = normalize_category_preset_name(data.get("name"))
@@ -14151,7 +14728,7 @@ def delete_category_preset():
 def load_category_preset():
     global category_assignments, category_folders, category_groups
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     presets = load_category_presets()
     preset_name, preset = find_category_preset(presets, data.get("name"))
@@ -14197,7 +14774,7 @@ def load_category_preset():
 def create_category_group():
     global category_groups
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     name = unique_category_group_name(data.get("name"))
     base_id = normalize_category_group_id(name) or "group"
@@ -14219,7 +14796,7 @@ def create_category_group():
 @app.route("/update_category_group", methods=["POST"])
 def update_category_group():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     group_id = normalize_category_group_id(data.get("id"))
     group = category_group_for_id(group_id)
@@ -14237,7 +14814,7 @@ def update_category_group():
 def delete_category_group():
     global category_groups
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     group_id = normalize_category_group_id(data.get("id"))
     if group_id == DEFAULT_CATEGORY_GROUP_ID:
@@ -14256,7 +14833,7 @@ def delete_category_group():
 def delete_category_items():
     global category_groups, category_folders, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     requested_group_ids = {
         normalize_category_group_id(value)
@@ -14310,7 +14887,7 @@ def delete_category_items():
 def create_category():
     global category_folders
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     index = len(category_folders)
     category = normalize_category_folder({
@@ -14328,7 +14905,7 @@ def create_category():
 def update_category():
     global category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     data = request.get_json(force=True) or {}
     old_name = str(data.get("old_name") or "").strip()
     target = category_folder_for_value(old_name)
@@ -14348,7 +14925,7 @@ def update_category():
 def delete_category():
     global category_folders, category_assignments
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
     name = str((request.get_json(force=True) or {}).get("name") or "").strip()
     if name == DEFAULT_CATEGORY:
         return jsonify({"ok": False, "error": "Undefined cannot be deleted."}), 400
@@ -14369,8 +14946,8 @@ def replace_all():
     global message, pairs_cache
     if not current_folder:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"ok": False, "error": "No folder opened."}), 400
-        message = "No folder opened."
+            return jsonify({"ok": False, "error": "No folder selected."}), 400
+        message = "No folder selected."
         return redirect(url_for("index"))
 
     match_string = request.form.get("match_string", "")
@@ -14400,8 +14977,8 @@ def add_triggerword_all():
     global message, pairs_cache
     if not current_folder:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"ok": False, "error": "No folder opened."}), 400
-        message = "No folder opened."
+            return jsonify({"ok": False, "error": "No folder selected."}), 400
+        message = "No folder selected."
         return redirect(url_for("index"))
 
     trigger_word = request.form.get("trigger_word", "")
@@ -14440,8 +15017,8 @@ def count_string():
     global message
     if not current_folder:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"ok": False, "error": "No folder opened."}), 400
-        message = "No folder opened."
+            return jsonify({"ok": False, "error": "No folder selected."}), 400
+        message = "No folder selected."
         return redirect(url_for("index"))
 
     count_regex = request.form.get("count_string", "")
@@ -14570,7 +15147,7 @@ def backup():
     global message
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if not current_folder:
-        message = "No folder opened."
+        message = "No folder selected."
         if wants_json:
             return jsonify({"ok": False, "error": message}), 400
         return redirect(url_for("index"))
@@ -14692,7 +15269,7 @@ def joycaption_start():
         return jsonify({"ok": False, "error": "Wait for auto-categorization to finish first."}), 400
 
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder opened."}), 400
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     options = request.get_json(force=True) or {}
 
@@ -14743,7 +15320,7 @@ def open_in_file_manager():
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in (request.headers.get("Accept") or "")
 
     if not current_folder:
-        error = "No folder opened."
+        error = "No folder selected."
         if wants_json:
             return jsonify({"ok": False, "error": error}), 400
         message = error

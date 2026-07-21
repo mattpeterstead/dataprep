@@ -1147,7 +1147,7 @@ def close_folder():
 def add_files():
     global message
     if not current_folder:
-        message = "No folder is open."
+        message = "No folder is selected."
         return redirect(url_for("index"))
     files = choose_files()
     if not files:
@@ -1174,7 +1174,7 @@ def add_files():
 def upload_videos():
     global message
     if not current_folder or not os.path.isdir(current_folder):
-        return jsonify({"ok": False, "error": "Open a folder before adding videos."}), 400
+        return jsonify({"ok": False, "error": "Select a folder before adding videos."}), 400
 
     uploads = request.files.getlist("videos")
     if not uploads:
@@ -1240,7 +1240,7 @@ def refresh_pairs_route():
 @app.post("/refresh_folder")
 def refresh_folder():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder is open."}), 400
+        return jsonify({"ok": False, "error": "No folder is selected."}), 400
     before = {str(pair.get("name") or "") for pair in pairs_cache}
     refresh_pairs()
     after = {str(pair.get("name") or "") for pair in pairs_cache}
@@ -1309,7 +1309,7 @@ def backup():
     global message
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in request.headers.get("Accept", "")
     if not current_folder:
-        message = "No folder is open."
+        message = "No folder is selected."
         if wants_json:
             return jsonify({"ok": False, "error": message}), 400
         return redirect(url_for("index"))
@@ -1368,7 +1368,7 @@ def count_in_all_captions(folder, count_string):
 @app.get("/captions_json")
 def captions_json():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder is open."}), 400
+        return jsonify({"ok": False, "error": "No folder is selected."}), 400
     pairs = []
     for pair in pairs_cache:
         name = str(pair.get("name") or "")
@@ -1391,7 +1391,7 @@ def open_in_file_manager():
     global message
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in (request.headers.get("Accept") or "")
     if not current_folder:
-        error = "No folder opened."
+        error = "No folder selected."
         if wants_json:
             return jsonify({"ok": False, "error": error}), 400
         message = error
@@ -1421,7 +1421,7 @@ def text_replace():
     find_text = request.form.get("find", "")
     repl_text = request.form.get("replace", "")
     if not current_folder:
-        message = "No folder is open."
+        message = "No folder is selected."
         return redirect(url_for("index"))
     count = 0
     for txt in Path(current_folder).glob("*.txt"):
@@ -1452,7 +1452,7 @@ def replace_all():
     global message
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if not current_folder:
-        error = "No folder is open."
+        error = "No folder is selected."
         if wants_json:
             return jsonify({"ok": False, "error": error}), 400
         message = error
@@ -1487,7 +1487,7 @@ def add_triggerword_all():
     global message
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if not current_folder:
-        error = "No folder is open."
+        error = "No folder is selected."
         if wants_json:
             return jsonify({"ok": False, "error": error}), 400
         message = error
@@ -1519,7 +1519,7 @@ def count_string():
     global message
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if not current_folder:
-        error = "No folder is open."
+        error = "No folder is selected."
         if wants_json:
             return jsonify({"ok": False, "error": error}), 400
         message = error
@@ -1635,7 +1635,7 @@ def video_caption_worker(folder, options):
 @app.post("/video_caption_start")
 def video_caption_start():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder is open."}), 400
+        return jsonify({"ok": False, "error": "No folder is selected."}), 400
     with caption_lock:
         if caption_status.get("running"):
             return jsonify({"ok": False, "error": "Captioning is already running."}), 409
@@ -1668,7 +1668,7 @@ def video_caption_interrupt():
 @app.get("/stats")
 def stats():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder is open."}), 400
+        return jsonify({"ok": False, "error": "No folder is selected."}), 400
 
     videos = list(pairs_cache)
     captions = 0
@@ -1732,7 +1732,7 @@ def stats():
 def rename_all_pairs():
     global message
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder is open."}), 400
+        return jsonify({"ok": False, "error": "No folder is selected."}), 400
     data = request.get_json(force=True) or {}
     prefix = str(data.get("prefix") or "").strip()
     if not prefix:
@@ -1971,7 +1971,7 @@ def save_edit():
 def slice_video():
     global message
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder is open."}), 400
+        return jsonify({"ok": False, "error": "No folder is selected."}), 400
     data = request.get_json(force=True) or {}
     name = str(data.get("name") or "")
     segments = data.get("segments") or []
@@ -2253,7 +2253,7 @@ def convert_fps_worker(folder, videos, duration_by_name, fps_by_name, target_fps
 @app.post("/convert_fps")
 def convert_fps():
     if not current_folder:
-        return jsonify({"ok": False, "error": "No folder is open."}), 400
+        return jsonify({"ok": False, "error": "No folder is selected."}), 400
 
     data = request.get_json(force=True, silent=True) or {}
     try:
@@ -3029,6 +3029,17 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
 }
 .modal-body{padding:12px}
 .help-modal{width:min(760px,calc(100vw - 24px))}
+.about-modal{width:min(500px,calc(100vw - 24px))}
+.about-content{display:grid;gap:12px;padding:18px;line-height:1.5}
+.about-content p{margin:0}
+.about-content a{color:var(--accent)}
+.about-product{display:flex;align-items:center;gap:12px}
+.about-product img{width:36px;height:36px}
+.about-product-name{font-size:20px;font-weight:800}
+.about-product-tagline{color:var(--muted)}
+.about-details{display:grid;grid-template-columns:max-content 1fr;gap:5px 14px;margin:0}
+.about-details dt{color:var(--muted)}
+.about-details dd{margin:0}
 .help-content{
   padding:14px 16px 18px;
   color:var(--text);
@@ -3453,9 +3464,9 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
     <details class="top-menu">
       <summary>File</summary>
       <div class="top-menu-popover">
-        <form method="post" action="/open_folder" id="openFolderForm"><button type="submit" title="Open a video folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.svg" alt="">Open Folder</span></button></form>
+        <form method="post" action="/open_folder" id="openFolderForm"><button type="submit" title="Select a video folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_folder.svg" alt="">Select Folder</span></button></form>
         <form method="post" action="/add_files"><button type="submit" title="Add video files"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_add_files.svg" alt="">Add Videos</span></button></form>
-        <button id="openFolderInExplorerBtn" type="button" title="Show the opened folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.svg" alt="">Show Folder</span></button>
+        <button id="openFolderInExplorerBtn" type="button" title="Show the selected folder in File Explorer"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_open_file_manager.svg" alt="">Show Folder</span></button>
         <form method="post" action="/backup" class="backup-form"><button type="submit" title="Back up video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_backup.svg" alt="">Backup</span></button></form>
         <form method="post" action="/close_folder"><button type="submit" title="Close Folder"><span class="toolbar-btn-content">Close Folder</span></button></form>
       </div>
@@ -3479,6 +3490,7 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
       <summary>Help</summary>
       <div class="top-menu-popover">
         <button type="button" id="openHelpModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_quick_guide.svg" alt="">Quick guide</span></button>
+        <button type="button" id="openAboutModalBtn"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_about.svg" alt="">About</span></button>
       </div>
     </details>
   </div>
@@ -3506,7 +3518,7 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
       <label><input type="radio" name="crop_base" value="1280"> 1280</label>
       <label><input type="radio" name="crop_base" value="1536"> 1536</label>
     </div>
-    <button id="refreshFolderBtn" type="button" class="top-control-action" title="Refresh the opened folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
+    <button id="refreshFolderBtn" type="button" class="top-control-action" title="Refresh the selected folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
     <button type="button" id="autoCropAllBtn" class="top-control-action" title="Auto crop every video"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_auto_crop_all.svg" alt="">Auto crop</span></button>
     <button type="button" id="resetAllBtn" class="top-control-action" title="Reset unsaved edits"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_reset_all.svg" alt="">Reset</span></button>
     <button type="button" id="saveAllBtn" class="top-control-action" title="Save all changed video and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.svg" alt="">Save</span></button>
@@ -3615,7 +3627,7 @@ hr{border:none;border-top:1px solid var(--border);margin:0}
 
 <div class="statusbar">
   <span class="statusbar-folder">
-    {% if current_folder %}Opened folder: {{ current_folder }} - {{ pairs|length }} video{% if pairs|length != 1 %}s{% endif %}.{% else %}No folder opened{% endif %}
+    {% if current_folder %}Selected folder: {{ current_folder }} - {{ pairs|length }} video{% if pairs|length != 1 %}s{% endif %}.{% else %}No folder selected{% endif %}
   </span>
   <span class="statusbar-message">{% if message %}{{ message }}{% endif %}</span>
 </div>
@@ -3872,7 +3884,7 @@ Output only the caption, with no intro or explanation.</textarea>
           <input id="convertBackupCheckbox" type="checkbox" checked>
           <span>Create backups in BACKUP folder</span>
         </label>
-        <div class="notice" style="padding:10px;grid-column:1 / -1;">Changes every video in the opened folder to the selected FPS. Converted videos replace the opened files.</div>
+        <div class="notice" style="padding:10px;grid-column:1 / -1;">Changes every video in the selected folder to the selected FPS. Converted videos replace the source files.</div>
         <div class="modal-progress" id="convertProgress" style="display:none;">
           <span class="modal-progress-label" id="convertProgressLabel">Convert: 0/0</span>
           <span class="modal-progress-percent" id="convertProgressPercent">0%</span>
@@ -4026,6 +4038,29 @@ Output only the caption, with no intro or explanation.</textarea>
   </div>
 </div>
 
+<div id="aboutModal" class="modal">
+  <div class="modal-card about-modal" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle">
+    <div class="modal-head">
+      <h3 id="aboutModalTitle">About</h3>
+      <button type="button" class="modal-close-btn" id="closeAboutModalBtn" aria-label="Close About">X</button>
+    </div>
+    <div class="about-content">
+      <div class="about-product">
+        <img src="/category_icon/btn_dataprep.svg" alt="">
+        <div><div class="about-product-name">DataPrep</div><div class="about-product-tagline">Image and video dataset preparation</div></div>
+      </div>
+      <dl class="about-details">
+        <dt>Version</dt><dd>Current development build</dd>
+        <dt>License</dt><dd>MIT License</dd>
+        <dt>Copyright</dt><dd>Copyright &copy; 2026 mattpeterstead</dd>
+      </dl>
+      <p><a href="https://github.com/mattpeterstead/dataprep" target="_blank" rel="noopener noreferrer">github.com/mattpeterstead/dataprep</a></p>
+      <p class="small">Third-party libraries, models, and assets are subject to their respective licenses.</p>
+    </div>
+    <div class="modal-actions"><button type="button" id="closeAboutModalActionBtn">Close</button></div>
+  </div>
+</div>
+
 <div id="helpModal" class="modal">
   <div class="modal-card help-modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
     <div class="modal-head">
@@ -4034,7 +4069,7 @@ Output only the caption, with no intro or explanation.</textarea>
     </div>
     <div class="help-content">
       <h4>Getting started</h4>
-      <p>Select <b>File &gt; Open Folder</b> to open a video dataset. Matching caption files are created beside videos when needed.</p>
+      <p>Choose <b>File &gt; Select Folder</b> to select a video dataset. Matching caption files are created beside videos when needed.</p>
 
       <h4>Selecting cards</h4>
       <p>Click a card title to select it. Hold <kbd>Ctrl</kbd> to select several cards, or press <kbd>Ctrl+A</kbd> to select all cards.</p>
@@ -4241,7 +4276,7 @@ async function uploadVideoFiles(files, sourceLabel = 'selected') {
   const videoFiles = videoFilesFromFileList(files);
   if (!videoFiles.length) return;
   if (!HAS_OPEN_FOLDER) {
-    await appAlert('Open a folder before adding videos.');
+    await appAlert('Select a folder before adding videos.');
     return;
   }
   if (hasUnsavedVideoChanges()) {
@@ -6529,10 +6564,10 @@ document.getElementById('openFolderInExplorerBtn').onclick = async () => {
     });
     const data = await res.json();
     if (!res.ok || !data.ok) {
-      await appAlert(data.error || 'Failed to open folder.');
+      await appAlert(data.error || 'Failed to select folder.');
     }
   } catch (e) {
-    await appAlert('Failed to open folder.');
+    await appAlert('Failed to select folder.');
   }
 };
 
@@ -6543,6 +6578,7 @@ const settingsModal = document.getElementById('settingsModal');
 const statsModal = document.getElementById('statsModal');
 const renameAllModal = document.getElementById('renameAllModal');
 const helpModal = document.getElementById('helpModal');
+const aboutModal = document.getElementById('aboutModal');
 const videoCaptionBackend = document.getElementById('video_caption_backend');
 const videoCaptionStatusText = document.getElementById('videoCaptionStatusText');
 const videoCaptionStartBtn = document.getElementById('videoCaptionStartBtn');
@@ -6662,8 +6698,22 @@ function closeHelpModal() {
   helpModal?.classList.remove('open');
 }
 
+function openAboutModal() {
+  aboutModal?.classList.add('open');
+}
+
+function closeAboutModal() {
+  aboutModal?.classList.remove('open');
+}
+
 document.getElementById('openHelpModalBtn')?.addEventListener('click', openHelpModal);
 document.getElementById('closeHelpModalBtn')?.addEventListener('click', closeHelpModal);
+document.getElementById('openAboutModalBtn')?.addEventListener('click', openAboutModal);
+document.getElementById('closeAboutModalBtn')?.addEventListener('click', closeAboutModal);
+document.getElementById('closeAboutModalActionBtn')?.addEventListener('click', closeAboutModal);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeAboutModal();
+});
 
 if (sessionStorage.getItem(VIDEO_GRID_LOADING_KEY) === '1') {
   sessionStorage.removeItem(VIDEO_GRID_LOADING_KEY);
@@ -6679,7 +6729,7 @@ document.getElementById('openFolderForm')?.addEventListener('submit', async even
       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
     });
     const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || 'Open folder failed.');
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Select folder failed.');
     if (data.selected) {
       setVideoGridLoading(true);
       sessionStorage.setItem(VIDEO_GRID_LOADING_KEY, '1');
@@ -6689,7 +6739,7 @@ document.getElementById('openFolderForm')?.addEventListener('submit', async even
     setVideoGridLoading(false);
     sessionStorage.removeItem(VIDEO_GRID_LOADING_KEY);
     hideAppBusy();
-    await appAlert(err?.message || 'Open folder failed.');
+    await appAlert(err?.message || 'Select folder failed.');
   }
 });
 document.getElementById('refreshFolderBtn')?.addEventListener('click', async () => {
