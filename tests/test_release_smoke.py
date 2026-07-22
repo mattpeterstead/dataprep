@@ -92,12 +92,15 @@ class ReleaseSmokeTests(unittest.TestCase):
                 self.assertNotIn('id="captionBackendHelp"', html)
                 self.assertIn("caption-backend-tooltip", html)
                 self.assertIn("bindCaptionBackendTooltip", html)
+                self.assertIn("Best for uncensored natural-language captions for general images and LoRA training data.", html)
                 self.assertIn('title="Best when you want to use a remote vision model with a custom prompt;', html)
                 self.assertIn("Do not mention hair color or eye color.", html)
                 self.assertIn("Best for concise Danbooru-style tags", html)
                 if module is imageprep_simple:
                     self.assertIn("Batch removal is experimental and may be unreliable.", html)
                     self.assertIn("event.target.closest('.top')", html)
+                    self.assertIn("selectedItemCount > 1 && clickedSelectedItem", html)
+                    self.assertIn("await deleteCategorizeSelection();", html)
                     for element_id in (
                         "jsonEditRawBtn",
                         "jsonRawModalBackdrop",

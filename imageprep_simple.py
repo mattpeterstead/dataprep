@@ -3558,8 +3558,8 @@ body.watermark-mode .automask-btn {
   display: none;
 }
 
-body.watermark-mode .flip-h-btn,
-body.watermark-mode .flip-v-btn {
+body.mask-mode .flip-h-btn,
+body.mask-mode .flip-v-btn {
   display: none !important;
 }
 
@@ -6118,7 +6118,7 @@ body {
       <label>
         Backend
         <select id="joy_backend" aria-label="Caption backend">
-          <option value="joycaption" title="Best for detailed natural-language captions for general images and LoRA training data.">JoyCaption</option>
+          <option value="joycaption" title="Best for uncensored natural-language captions for general images and LoRA training data.">JoyCaption</option>
           <option value="wd14" title="Best for concise Danbooru-style tags, especially for anime, illustrations, and character datasets.">WD-14</option>
           <option value="qwen3_vl" title="Best for prompt-guided natural-language captions, character and scene descriptions, and structured Ideogram JSON.">Qwen3-VL</option>
           <option value="external_api" title="Best when you want to use a remote vision model with a custom prompt; capabilities depend on the configured API model.">External API</option>
@@ -10897,7 +10897,7 @@ function syncCaptionFormatGenerationDefaults(captionFormat) {
 
 
 const captionBackendDescriptions = {
-  joycaption: 'Best for detailed natural-language captions for general images and LoRA training data.',
+  joycaption: 'Best for uncensored natural-language captions for general images and LoRA training data.',
   wd14: 'Best for concise Danbooru-style tags, especially for anime, illustrations, and character datasets.',
   qwen3_vl: 'Best for prompt-guided natural-language captions, character and scene descriptions, and structured Ideogram JSON.',
   external_api: 'Best when you want to use a remote vision model with a custom prompt; capabilities depend on the configured API model.',
@@ -12113,6 +12113,14 @@ categorizeGroups?.addEventListener('click', async event => {
   if (!action) return;
   const groupNode = event.target.closest('.categorize-group');
   const categoryNode = event.target.closest('.categorize-category-row');
+  const selectedItemCount = selectedCategorizeGroupIds.size + selectedCategorizeCategoryNames.size;
+  const clickedSelectedItem = action === 'delete-group'
+    ? selectedCategorizeGroupIds.has(groupNode?.dataset.groupId)
+    : action === 'delete-category' && selectedCategorizeCategoryNames.has(categoryNode?.dataset.categoryName);
+  if (selectedItemCount > 1 && clickedSelectedItem) {
+    await deleteCategorizeSelection();
+    return;
+  }
   try {
     if (action === 'add-category') {
       const name = await appPrompt('Category name:', 'New Category', 'Add category');
