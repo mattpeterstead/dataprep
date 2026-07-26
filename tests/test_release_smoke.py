@@ -52,8 +52,12 @@ class ReleaseSmokeTests(unittest.TestCase):
     def test_updated_toolbar_icons_and_json_element_colors(self):
         masking_svg = (imageprep_simple.APP_DIR / "images" / "btn_masking.svg").read_text(encoding="utf-8")
         rename_svg = (imageprep_simple.APP_DIR / "images" / "btn_rename_all.svg").read_text(encoding="utf-8")
+        circle_svg = (imageprep_simple.APP_DIR / "images" / "btn_mask_circle.svg").read_text(encoding="utf-8")
+        watermark_svg = (imageprep_simple.APP_DIR / "images" / "btn_watermark_removal.svg").read_text(encoding="utf-8")
         self.assertIn('fill="#fff" stroke="#111"', masking_svg)
         self.assertIn('fill="#f4c542"', rename_svg)
+        self.assertIn('fill="#4ea5df"', circle_svg)
+        self.assertIn('width="11.5" height="3.25"', watermark_svg)
 
         for module in (imageprep_simple, imageprep):
             with self.subTest(module=module.__name__):
@@ -61,13 +65,27 @@ class ReleaseSmokeTests(unittest.TestCase):
                 self.assertIn("--json-bbox-hover-bg", module.TEMPLATE)
                 self.assertEqual(module.TEMPLATE.count('id="exitMaskModeBtn"'), 1)
                 self.assertEqual(module.TEMPLATE.count('id="exitMaskModeLabel"'), 1)
+                self.assertIn("button.hidden = !maskModeActive || maskModePurpose === 'watermark';", module.TEMPLATE)
                 self.assertIn("Enable watermark removal mode", module.TEMPLATE)
-                self.assertIn("Exit ${modeName} mode", module.TEMPLATE)
+                self.assertIn("function drawMaskShape(", module.TEMPLATE)
+                self.assertIn("const snapToEdge = point =>", module.TEMPLATE)
+                self.assertIn("['brush', 'fill', 'rectangle', 'circle']", module.TEMPLATE)
+                self.assertIn('data-tool="rectangle"', module.TEMPLATE)
+                self.assertIn('data-tool="circle"', module.TEMPLATE)
                 self.assertIn("boundWheelZoom", module.TEMPLATE)
+                self.assertIn("if (!isCardWheelZoomEnabled()) return;", module.TEMPLATE)
                 self.assertIn("Math.exp(-pixelDelta * 0.002)", module.TEMPLATE)
                 self.assertIn("{ passive: false }", module.TEMPLATE)
                 self.assertIn("const minNewCropDragPx = 6", module.TEMPLATE)
                 self.assertIn("completedDrag.mode === 'new'", module.TEMPLATE)
+                self.assertEqual(module.TEMPLATE.count('id="cardSortMenu"'), 1)
+                self.assertEqual(module.TEMPLATE.count('id="cardSortBy"'), 1)
+                self.assertEqual(module.TEMPLATE.count('id="cardSortDirection"'), 1)
+                self.assertIn('data-added-at="{{ pair.added_at }}"', module.TEMPLATE)
+                self.assertIn("function applyCardSort()", module.TEMPLATE)
+                self.assertIn("dataprep_card_sort_by", module.TEMPLATE)
+                self.assertIn('<option value="size">Resolution</option>', module.TEMPLATE)
+                self.assertIn("const aPixels =", module.TEMPLATE)
 
     def test_prompt_preset_ui_and_qwen_default_render(self):
         for module in (imageprep_simple, imageprep):
@@ -97,6 +115,11 @@ class ReleaseSmokeTests(unittest.TestCase):
                 self.assertIn("Do not mention hair color or eye color.", html)
                 self.assertIn("Best for concise Danbooru-style tags", html)
                 if module is imageprep_simple:
+                    self.assertEqual(html.count('id="watermarkModeBtn"'), 1)
+                    self.assertIn(">Watermark</span>", html)
+                    self.assertIn("await setMaskMode(!active, 'watermark');", html)
+                    self.assertEqual(html.count('id="cardWheelZoomSetting"'), 1)
+                    self.assertIn("Zoom card images with the mouse wheel", html)
                     self.assertIn("Batch removal is experimental and may be unreliable.", html)
                     self.assertIn("event.target.closest('.top')", html)
                     self.assertIn("selectedItemCount > 1 && clickedSelectedItem", html)

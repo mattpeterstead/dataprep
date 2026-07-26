@@ -2192,6 +2192,10 @@ def get_image_info(img_file):
 
 def build_pair_dict(index, img_name, text):
     width, height, aspect = get_image_info(img_name)
+    try:
+        added_at = os.path.getctime(os.path.join(current_folder, img_name))
+    except OSError:
+        added_at = 0
     aspect_label = get_aspect_label(width, height)
     detected_base = detect_base_resolution(width, height)
     ratio_display = f"{width}×{height} ({aspect_label})"
@@ -2201,6 +2205,7 @@ def build_pair_dict(index, img_name, text):
     return {
         "index": index,
         "img_name": img_name,
+        "added_at": added_at,
         "text": text,
         "width": width,
         "height": height,
@@ -3566,6 +3571,14 @@ body.mask-mode .flip-v-btn {
 body.watermark-mode .watermark-apply-btn {
   display: inline-flex;
   border-color: #eab308;
+}
+
+body.mask-mode .mask-shape-btn {
+  display: none;
+}
+
+body.watermark-mode .mask-shape-btn {
+  display: inline-flex;
 }
 
 .mask-tool-btn.active {
@@ -5504,6 +5517,60 @@ body.dark ::-webkit-scrollbar-thumb:hover {
   font-size: 12px;
 }
 
+.card-sort-menu {
+  position: relative;
+  align-self: stretch;
+}
+
+.card-sort-menu > summary {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  box-sizing: border-box;
+  color: var(--fg);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.card-sort-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.card-sort-menu[open] > summary,
+.card-sort-menu > summary:hover {
+  background: #272727;
+  border-color: #4b5563;
+}
+
+.card-sort-popover {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 170;
+  display: grid;
+  gap: 8px;
+  min-width: 210px;
+  padding: 10px;
+  background: #171717;
+  border: 1px solid #353535;
+  border-radius: 7px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.45);
+}
+
+.card-sort-popover label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.card-sort-popover select {
+  width: 100%;
+  min-width: 0;
+}
+
 .top-menu {
   position: relative;
 }
@@ -5758,6 +5825,11 @@ body.top-menu-flat .top .top-menu-popover .toolbar-btn-content {
 .top #exitMaskModeBtn:hover { background:#7b2222; border-color:#dc4b4b; }
 .top #exitMaskModeBtn[hidden] { display:none !important; }
 
+.top #watermarkModeBtn.is-active {
+  border-color: #eab308;
+  box-shadow: 0 0 0 1px rgba(234,179,8,.45) inset;
+}
+
 .top .toolbar-btn-content {
   display: inline-flex;
   align-items: center;
@@ -5955,8 +6027,27 @@ body {
       <label><input type="radio" name="crop_base" value="1280" {% if selected_crop_base == 1280 %}checked{% endif %}> 1280</label>
       <label><input type="radio" name="crop_base" value="1536" {% if selected_crop_base == 1536 %}checked{% endif %}> 1536</label>
     </div>
+    <details class="card-sort-menu" id="cardSortMenu">
+      <summary class="top-control-action" title="Choose card order"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_sort.svg" alt="">Sort</span></summary>
+      <div class="card-sort-popover">
+        <label>Sort by
+          <select id="cardSortBy">
+            <option value="added">Added time</option>
+            <option value="name">Name</option>
+            <option value="size">Resolution</option>
+          </select>
+        </label>
+        <label>Order
+          <select id="cardSortDirection">
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select>
+        </label>
+      </div>
+    </details>
     <button type="button" id="refreshFolderBtn" class="top-control-action" title="Refresh the selected folder"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_refresh.svg" alt="">Refresh</span></button>
     <button type="button" id="autoCropAllBtn" class="top-control-action" title="Auto crop every image"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_auto_crop_all.svg" alt="">Auto crop</span></button>
+    <button type="button" id="watermarkModeBtn" class="top-control-action" title="Enter watermark removal mode" aria-pressed="false"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_watermark_removal.svg" alt="">Watermark</span></button>
     <button type="button" id="resetAllBtn" class="top-control-action" title="Reset unsaved captions, crops, and transforms"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_reset_all.svg" alt="">Reset</span></button>
     <button type="button" id="saveAllBtn" class="top-control-action" title="Save every unsaved item"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_save_all.svg" alt="">Save</span></button>
     <button type="button" id="exitMaskModeBtn" class="top-control-action" title="Exit masking mode" hidden><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_exit_mode.svg" alt=""><span id="exitMaskModeLabel">Exit Masking mode</span></span></button>
@@ -5975,7 +6066,7 @@ body {
 
 <div class="grid">
 {% for pair in pairs %}
-  <div class="pair-card" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" data-category="{{ pair.category }}">
+  <div class="pair-card" data-index="{{ pair.index }}" data-img="{{ pair.img_name }}" data-category="{{ pair.category }}" data-added-at="{{ pair.added_at }}">
     <div class="card-head">
       <div class="filename" data-index="{{ pair.index }}" title="Double-click to rename">{{ pair.img_name }}</div>
       <div class="status-wrap">
@@ -6032,6 +6123,12 @@ body {
       </button>
       <button type="button" class="icon-btn mask-tool-btn mask-fill-btn" data-index="{{ pair.index }}" data-tool="fill" title="Fill" aria-label="Fill">
         <img src="/category_icon/btn_mask_fill.svg" alt="">
+      </button>
+      <button type="button" class="icon-btn mask-tool-btn mask-shape-btn mask-rectangle-btn" data-index="{{ pair.index }}" data-tool="rectangle" title="Rectangle" aria-label="Rectangle">
+        <img src="/category_icon/btn_mask_rectangle.svg" alt="">
+      </button>
+      <button type="button" class="icon-btn mask-tool-btn mask-shape-btn mask-circle-btn" data-index="{{ pair.index }}" data-tool="circle" title="Circle" aria-label="Circle">
+        <img src="/category_icon/btn_mask_circle.svg" alt="">
       </button>
       <button type="button" class="icon-btn auto-crop-btn" data-index="{{ pair.index }}" title="Auto crop" aria-label="Auto crop">
         <img src="/category_icon/btn_card_autocrop.svg" alt="">
@@ -6839,6 +6936,13 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
           </span>
           <input type="checkbox" id="groupTopbarButtonsSetting">
         </label>
+        <label class="settings-option" for="cardWheelZoomSetting">
+          <span>
+            <span class="settings-option-title">Zoom card images with the mouse wheel</span>
+            <span class="settings-option-description">Turn this off to scroll the page normally while the pointer is over an image.</span>
+          </span>
+          <input type="checkbox" id="cardWheelZoomSetting">
+        </label>
       </div>
     </div>
   </div>
@@ -6925,6 +7029,14 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
 <script id="category-groups-data" type="application/json">{{ category_groups_json|safe }}</script>
 <script>
 const BUCKET_OPTIONS = JSON.parse(document.getElementById('bucket-data').textContent);
+const CARD_WHEEL_ZOOM_KEY = 'dataprep_card_wheel_zoom';
+function isCardWheelZoomEnabled() {
+  try {
+    return localStorage.getItem(CARD_WHEEL_ZOOM_KEY) !== 'false';
+  } catch (error) {
+    return true;
+  }
+}
 const topMenus = Array.from(document.querySelectorAll('.top-menu'));
 topMenus.forEach(menu => {
   menu.addEventListener('toggle', () => {
@@ -6951,6 +7063,7 @@ const openSettingsModalBtn = document.getElementById('openSettingsModalBtn');
 const closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
 const hideCardCategoryButtonsSetting = document.getElementById('hideCardCategoryButtonsSetting');
 const groupTopbarButtonsSetting = document.getElementById('groupTopbarButtonsSetting');
+const cardWheelZoomSetting = document.getElementById('cardWheelZoomSetting');
 const HIDE_CARD_CATEGORY_BUTTONS_KEY = 'dataprep_hide_card_category_buttons';
 const GROUP_TOPBAR_BUTTONS_KEY = 'dataprep_group_topbar_buttons';
 let topMenuGroupingEnabled = true;
@@ -6980,6 +7093,9 @@ function loadTopbarGroupingSetting() {
   if (groupTopbarButtonsSetting) groupTopbarButtonsSetting.checked = grouped;
   applyTopbarGroupingSetting(grouped);
 }
+function loadCardWheelZoomSetting() {
+  if (cardWheelZoomSetting) cardWheelZoomSetting.checked = isCardWheelZoomEnabled();
+}
 function openSettingsModal() {
   settingsModalBackdrop?.classList.add('open');
 }
@@ -7002,8 +7118,14 @@ groupTopbarButtonsSetting?.addEventListener('change', () => {
   } catch (error) {}
   applyTopbarGroupingSetting(grouped);
 });
+cardWheelZoomSetting?.addEventListener('change', () => {
+  try {
+    localStorage.setItem(CARD_WHEEL_ZOOM_KEY, String(cardWheelZoomSetting.checked));
+  } catch (error) {}
+});
 loadCardCategoryButtonSetting();
 loadTopbarGroupingSetting();
+loadCardWheelZoomSetting();
 
 const helpModalBackdrop = document.getElementById('helpModalBackdrop');
 const openHelpModalBtn = document.getElementById('openHelpModalBtn');
@@ -7494,7 +7616,10 @@ function loadMaskCanvas(index, force = false) {
 }
 
 function setMaskTool(tool) {
-  currentMaskTool = ['brush', 'fill'].includes(tool) ? tool : 'brush';
+  const allowedTools = maskModePurpose === 'watermark'
+    ? ['brush', 'fill', 'rectangle', 'circle']
+    : ['brush', 'fill'];
+  currentMaskTool = allowedTools.includes(tool) ? tool : 'brush';
   document.querySelectorAll('.mask-tool-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tool === currentMaskTool);
     btn.setAttribute('aria-pressed', btn.dataset.tool === currentMaskTool ? 'true' : 'false');
@@ -7951,6 +8076,48 @@ function fillMaskArea(index, point, erase = false) {
   return changed;
 }
 
+function drawMaskShape(index, startPoint, endPoint, tool, erase = false, baseImageData = null) {
+  const canvas = getMaskCanvas(index);
+  if (!canvas || !startPoint || !endPoint || !['rectangle', 'circle'].includes(tool)) return false;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (baseImageData) ctx.putImageData(baseImageData, 0, 0);
+  const renderedRect = canvas.getBoundingClientRect();
+  const snapX = renderedRect.width ? Math.max(1, (canvas.width / renderedRect.width) * 3) : 1;
+  const snapY = renderedRect.height ? Math.max(1, (canvas.height / renderedRect.height) * 3) : 1;
+  const snapToEdge = point => ({
+    x: point.x <= snapX ? 0 : point.x >= canvas.width - snapX ? canvas.width : point.x,
+    y: point.y <= snapY ? 0 : point.y >= canvas.height - snapY ? canvas.height : point.y,
+  });
+  const start = snapToEdge(startPoint);
+  const end = snapToEdge(endPoint);
+  const left = Math.min(start.x, end.x);
+  const top = Math.min(start.y, end.y);
+  const width = Math.abs(end.x - start.x);
+  const height = Math.abs(end.y - start.y);
+  ctx.save();
+  ctx.fillStyle = erase ? '#000' : '#fff';
+  if (tool === 'rectangle') {
+    if (width < 0.5 || height < 0.5) {
+      ctx.restore();
+      return false;
+    }
+    ctx.fillRect(left, top, width, height);
+  } else {
+    const diameter = Math.max(width, height);
+    if (diameter < 0.5) {
+      ctx.restore();
+      return false;
+    }
+    const circleLeft = end.x >= start.x ? start.x : start.x - diameter;
+    const circleTop = end.y >= start.y ? start.y : start.y - diameter;
+    ctx.beginPath();
+    ctx.arc(circleLeft + diameter / 2, circleTop + diameter / 2, diameter / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  return true;
+}
+
 function attachMaskCanvasListeners(card) {
   const canvas = ensureMaskCanvasElement(card);
   if (!canvas || canvas.dataset.boundMask) return;
@@ -7959,6 +8126,10 @@ function attachMaskCanvasListeners(card) {
   let lastPoint = null;
   let strokeStartSnapshot = '';
   let strokeErases = false;
+  let strokeTool = 'brush';
+  let shapeStartPoint = null;
+  let shapeBaseImageData = null;
+  let shapeChanged = false;
   let suppressRightContextMenu = false;
   const suppressContextMenu = (event) => {
     if (maskModeActive && suppressRightContextMenu) event.preventDefault();
@@ -7999,13 +8170,21 @@ function attachMaskCanvasListeners(card) {
     }
     drawing = true;
     lastPoint = point;
-    strokeErases = currentMaskTool === 'brush' && event.button === 2;
+    strokeTool = currentMaskTool;
+    strokeErases = event.button === 2;
     if (strokeErases) {
       suppressRightContextMenu = true;
       document.addEventListener('contextmenu', suppressContextMenu, true);
     }
     strokeStartSnapshot = snapshotMaskCanvas(index);
     canvas.setPointerCapture?.(event.pointerId);
+    if (['rectangle', 'circle'].includes(strokeTool)) {
+      shapeStartPoint = point;
+      shapeBaseImageData = canvas.getContext('2d', { willReadFrequently: true })
+        .getImageData(0, 0, canvas.width, canvas.height);
+      shapeChanged = false;
+      return;
+    }
     drawMaskPoint(index, point, null, strokeErases);
   });
   canvas.addEventListener('pointermove', (event) => {
@@ -8015,6 +8194,11 @@ function attachMaskCanvasListeners(card) {
     const index = parseInt(canvas.dataset.index, 10);
     const point = maskPointFromEvent(index, event);
     if (!point) return;
+    if (['rectangle', 'circle'].includes(strokeTool)) {
+      lastPoint = point;
+      shapeChanged = drawMaskShape(index, shapeStartPoint, point, strokeTool, strokeErases, shapeBaseImageData);
+      return;
+    }
     drawMaskPoint(index, point, lastPoint, strokeErases);
     lastPoint = point;
   });
@@ -8023,7 +8207,16 @@ function attachMaskCanvasListeners(card) {
     drawing = false;
     canvas.releasePointerCapture?.(event.pointerId);
     const index = parseInt(canvas.dataset.index, 10);
-    pushMaskUndoSnapshot(index, strokeStartSnapshot);
+    if (['rectangle', 'circle'].includes(strokeTool)) {
+      const endPoint = maskPointFromEvent(index, event) || lastPoint;
+      shapeChanged = drawMaskShape(index, shapeStartPoint, endPoint, strokeTool, strokeErases, shapeBaseImageData);
+      if (shapeChanged) pushMaskUndoSnapshot(index, strokeStartSnapshot);
+      shapeStartPoint = null;
+      shapeBaseImageData = null;
+      shapeChanged = false;
+    } else {
+      pushMaskUndoSnapshot(index, strokeStartSnapshot);
+    }
     strokeStartSnapshot = '';
     if (strokeErases) {
       window.setTimeout(() => {
@@ -8117,10 +8310,9 @@ function updateModeExitButton() {
   const button = document.getElementById('exitMaskModeBtn');
   const label = document.getElementById('exitMaskModeLabel');
   if (!button) return;
-  button.hidden = !maskModeActive;
-  const modeName = maskModePurpose === 'watermark' ? 'Watermark removal' : 'Masking';
-  if (label) label.textContent = `Exit ${modeName} mode`;
-  button.title = `Exit ${modeName.toLowerCase()} mode`;
+  button.hidden = !maskModeActive || maskModePurpose === 'watermark';
+  if (label) label.textContent = 'Exit Masking mode';
+  button.title = 'Exit masking mode';
 }
 
 document.getElementById('exitMaskModeBtn')?.addEventListener('click', () => {
@@ -8253,6 +8445,61 @@ document.addEventListener('paste', async (event) => {
 
 let textHeight = parseInt(localStorage.getItem('caption_app_text_height') || '110', 10);
 let imageHeight = parseInt(localStorage.getItem('caption_app_image_height') || '420', 10);
+const cardSortMenu = document.getElementById('cardSortMenu');
+const cardSortBy = document.getElementById('cardSortBy');
+const cardSortDirection = document.getElementById('cardSortDirection');
+const CARD_SORT_BY_KEY = 'dataprep_card_sort_by';
+const CARD_SORT_DIRECTION_KEY = 'dataprep_card_sort_direction';
+const cardNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+function applyCardSort() {
+  const requestedSortBy = cardSortBy?.value || 'name';
+  const sortBy = ['added', 'name', 'size'].includes(requestedSortBy) ? requestedSortBy : 'name';
+  const direction = cardSortDirection?.value === 'desc' ? -1 : 1;
+  document.querySelectorAll('.grid').forEach(grid => {
+    const cards = Array.from(grid.children).filter(child => child.classList.contains('pair-card'));
+    if (cards.length < 2) return;
+    cards.sort((a, b) => {
+      let result = 0;
+      if (sortBy === 'added') {
+        result = (Number.parseFloat(a.dataset.addedAt) || 0) - (Number.parseFloat(b.dataset.addedAt) || 0);
+      } else if (sortBy === 'size') {
+        const aDims = a.querySelector('.dims-badge')?.dataset || {};
+        const bDims = b.querySelector('.dims-badge')?.dataset || {};
+        const aPixels = (Number.parseInt(aDims.width, 10) || 0) * (Number.parseInt(aDims.height, 10) || 0);
+        const bPixels = (Number.parseInt(bDims.width, 10) || 0) * (Number.parseInt(bDims.height, 10) || 0);
+        result = aPixels - bPixels;
+      }
+      if (!result) result = cardNameCollator.compare(a.dataset.img || '', b.dataset.img || '');
+      return result * direction;
+    });
+    cards.forEach(card => grid.append(card));
+  });
+}
+
+function loadCardSortSettings() {
+  const savedBy = localStorage.getItem(CARD_SORT_BY_KEY);
+  const savedDirection = localStorage.getItem(CARD_SORT_DIRECTION_KEY);
+  if (cardSortBy) cardSortBy.value = ['added', 'name', 'size'].includes(savedBy) ? savedBy : 'name';
+  if (cardSortDirection) cardSortDirection.value = savedDirection === 'desc' ? 'desc' : 'asc';
+  applyCardSort();
+}
+
+function saveAndApplyCardSort() {
+  localStorage.setItem(CARD_SORT_BY_KEY, cardSortBy?.value || 'name');
+  localStorage.setItem(CARD_SORT_DIRECTION_KEY, cardSortDirection?.value || 'asc');
+  applyCardSort();
+}
+
+cardSortBy?.addEventListener('change', saveAndApplyCardSort);
+cardSortDirection?.addEventListener('change', saveAndApplyCardSort);
+document.addEventListener('pointerdown', event => {
+  if (cardSortMenu?.open && !event.target.closest('.card-sort-menu')) cardSortMenu.open = false;
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && cardSortMenu?.open) cardSortMenu.open = false;
+});
+loadCardSortSettings();
 let suppressBeforeUnload = false;
 document.body.classList.add('dark');
 localStorage.setItem('caption_app_theme', 'dark');
@@ -8507,6 +8754,7 @@ function updateCardIdentity(card, pair) {
   card.dataset.index = String(index);
   card.dataset.img = imgName;
   card.dataset.category = category;
+  card.dataset.addedAt = String(pair.added_at || card.dataset.addedAt || 0);
 
   const filenameEl = card.querySelector('.filename');
   if (filenameEl) {
@@ -8635,6 +8883,7 @@ function updateCardIdentity(card, pair) {
     renderCrop(index);
     markUnsaved(index);
   }
+  if (card.isConnected) queueMicrotask(applyCardSort);
 }
 
 function getNextCardIndex() {
@@ -8974,6 +9223,7 @@ function attachCardEventListeners(card) {
   if (zoomStage && !zoomStage.dataset.boundWheelZoom) {
     zoomStage.dataset.boundWheelZoom = '1';
     zoomStage.addEventListener('wheel', event => {
+      if (!isCardWheelZoomEnabled()) return;
       event.preventDefault();
       event.stopPropagation();
       const pixelDelta = event.deltaMode === 1
@@ -10490,12 +10740,19 @@ async function runWatermarkBatch() {
 }
 
 function updateWatermarkModeButton() {
-  const btn = document.getElementById('watermarkToggleModeBtn');
-  if (!btn) return;
   const active = maskModeActive && maskModePurpose === 'watermark';
-  btn.textContent = active ? 'Disable watermark removal mode' : 'Enable watermark removal mode';
-  btn.classList.toggle('is-active', active);
-  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  const modalBtn = document.getElementById('watermarkToggleModeBtn');
+  if (modalBtn) {
+    modalBtn.textContent = active ? 'Disable watermark removal mode' : 'Enable watermark removal mode';
+    modalBtn.classList.toggle('is-active', active);
+    modalBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  const toolbarBtn = document.getElementById('watermarkModeBtn');
+  if (toolbarBtn) {
+    toolbarBtn.classList.toggle('is-active', active);
+    toolbarBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    toolbarBtn.title = active ? 'Exit watermark removal mode' : 'Enter watermark removal mode';
+  }
 }
 
 function updateWatermarkBackendUi() {
@@ -10616,6 +10873,10 @@ updateMaskModeModalButton();
 });
 document.getElementById('maskModeBtn')?.addEventListener('click', openMaskModal);
 document.getElementById('openWatermarkModalBtn')?.addEventListener('click', openWatermarkModal);
+document.getElementById('watermarkModeBtn')?.addEventListener('click', async () => {
+  const active = maskModeActive && maskModePurpose === 'watermark';
+  await setMaskMode(!active, 'watermark');
+});
 document.getElementById('closeWatermarkModalBtn')?.addEventListener('click', closeWatermarkModal);
 document.getElementById('watermarkToggleModeBtn')?.addEventListener('click', async () => {
   const active = maskModeActive && maskModePurpose === 'watermark';

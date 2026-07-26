@@ -4,6 +4,8 @@ DataPrep is a local dataset preparation tool for image and video captioning work
 
 The app is designed for LoRA/dataset preparation work where files are edited directly in the dataset folder.
 
+![DataPrep image workflow](docs/images/dataprep-image-workflow.png)
+
 ## Workflows
 
 DataPrep has two workflows:
@@ -44,6 +46,17 @@ Recommended:
 Linux package names vary by distribution. Common prerequisites include Python, venv support, Tkinter, Git, FFmpeg, curl, and build tooling.
 
 On Windows, install Python with the `py` launcher enabled. Install FFmpeg separately if video conversion, slicing, or transcription is needed.
+
+### Disk space
+
+The mandatory Python dependencies, PyTorch, LaMa support, and KoboldCpp require approximately:
+
+| Installation | Installed footprint | Free space recommended before installation |
+| --- | ---: | ---: |
+| CPU-only PyTorch | about 2.5 GB | at least 4 GB |
+| NVIDIA CUDA PyTorch | about 5-7 GB | at least 10 GB |
+
+These estimates include the project virtual environment and required helper tools. The extra free space allows for downloaded wheels and temporary installation files. Optional WhisperX dependencies, FFmpeg, model weights, datasets, backups, and the pip cache are not included. Selected JoyCaption, Qwen3-VL, WD14, REMBG, and other model files can require several additional gigabytes.
 
 ## Installation
 
