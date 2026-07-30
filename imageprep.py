@@ -42,6 +42,7 @@ IMAGE_MIME_TO_EXTENSION = {
     "image/avif": ".avif",
 }
 APP_DIR = Path(__file__).resolve().parent
+APP_SESSION_ID = hashlib.sha256(f"{os.getpid()}:{time.time_ns()}".encode()).hexdigest()[:16]
 SETTINGS_DIR = APP_DIR / "settings"
 LAST_APP_FILE = SETTINGS_DIR / ".dataset_forge_last_app"
 IMAGE_FOLDER_HANDOFF_FILE = SETTINGS_DIR / ".dataset_forge_image_folder_handoff"
@@ -5941,7 +5942,7 @@ body {
       <summary>Edit</summary>
       <div class="top-menu-popover">
         <button type="button" id="maskModeBtn" class="mask-mode-btn" title="Open mask tools" aria-pressed="false"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_masking.svg" alt="">Masking</span></button>
-        <button type="button" id="renameAllBtn" title="Rename all image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.svg" alt="">Rename</span></button>
+        <button type="button" id="renameAllBtn" title="Rename selected image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.svg" alt="">Rename</span></button>
         <button type="button" id="openWatermarkModalBtn" title="Remove watermarks with an inpainting mask"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_watermark_removal.svg" alt="">Remove watermark</span></button>
       </div>
     </details>
@@ -6906,7 +6907,8 @@ const CATEGORY_GROUPS = JSON.parse(document.getElementById('category-groups-data
 const CATEGORY_ICON_BY_NAME = Object.fromEntries(CATEGORY_DEFS.map(item => [item.name, item.icon]));
 const CATEGORY_VISIBILITY_KEY = 'caption_app_categories_visible';
 const HAS_OPEN_FOLDER = {{ 'true' if folder_name else 'false' }};
-const FOLDER_KEY = {{ folder_name|tojson }};
+const FOLDER_KEY = {{ current_folder_path|tojson }};
+const APP_SESSION_ID = {{ app_session_id|tojson }};
 const IMAGE_FILE_PATTERN = /\.(png|jpe?g|gif|bmp|webp|avif)$/i;
 const DESKTOP_ICON_GRID_X = 112;
 const DESKTOP_ICON_GRID_Y = 120;
@@ -6962,7 +6964,19 @@ const appDialogOkBtn = document.getElementById('appDialogOkBtn');
 const appDialogCancelBtn = document.getElementById('appDialogCancelBtn');
 const appDialogCloseBtn = document.getElementById('appDialogCloseBtn');
 const selectedImgNames = new Set();
-let pairClipboard = null;
+const PAIR_CLIPBOARD_STORAGE_KEY = 'dataprep_pair_clipboard';
+function loadPairClipboard() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(PAIR_CLIPBOARD_STORAGE_KEY) || 'null');
+    return value && value.app_session_id === APP_SESSION_ID &&
+      Array.isArray(value.img_names) && value.img_names.length
+      ? value
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+let pairClipboard = loadPairClipboard();
 let activeCategory = localStorage.getItem(`caption_app_active_category_${FOLDER_KEY}`) || 'Undefined';
 let categoryWindowZ = 20;
 let categoryTabOrderCounter = 0;
@@ -7738,7 +7752,10 @@ function setPairClipboardFromSelection(mode) {
   pairClipboard = {
     mode,
     img_names: Array.from(selectedImgNames),
+    source_folder: FOLDER_KEY,
+    app_session_id: APP_SESSION_ID,
   };
+  sessionStorage.setItem(PAIR_CLIPBOARD_STORAGE_KEY, JSON.stringify(pairClipboard));
   if (mode === 'move') {
     markCutPendingCards(pairClipboard.img_names);
     setStatusbarMessage(`Cut ${selectedCardCount()} card${selectedCardCount() === 1 ? '' : 's'} to clipboard.`);
@@ -10186,7 +10203,12 @@ function markCutPendingCards(imgNames) {
 
 function clearPairClipboard() {
   pairClipboard = null;
+  sessionStorage.removeItem(PAIR_CLIPBOARD_STORAGE_KEY);
   clearCutPendingCards();
+}
+
+if (pairClipboard?.mode === 'move' && pairClipboard.source_folder === FOLDER_KEY) {
+  markCutPendingCards(pairClipboard.img_names);
 }
 
 function beginInlineRename(card) {
@@ -11265,17 +11287,22 @@ async function saveCategoryCards(category) {
 }
 
 async function renameAllPairs() {
-  const prefix = await appPrompt('Enter filename prefix for all images and captions:');
+  const imgNames = Array.from(selectedImgNames);
+  if (!imgNames.length) {
+    await appAlert('Select one or more cards to rename.');
+    return;
+  }
+  const prefix = await appPrompt('Enter filename prefix for selected images and captions:');
   if (prefix === null) return;
 
   const res = await fetch('/rename_all_pairs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prefix })
+    body: JSON.stringify({ prefix, img_names: imgNames })
   });
   const data = await res.json();
   if (!res.ok || !data.ok) {
-    await appAlert(data.error || 'Rename all failed');
+    await appAlert(data.error || 'Rename selected failed');
     return;
   }
   suppressBeforeUnload = true;
@@ -11283,7 +11310,15 @@ async function renameAllPairs() {
 }
 
 async function renameCategoryPairs(category) {
-  const prefix = await appPrompt(`Enter filename prefix for ${category}:`);
+  const imgNames = Array.from(selectedImgNames).filter(imgName => {
+    const card = document.querySelector(`.pair-card[data-img="${CSS.escape(imgName)}"]`);
+    return card?.dataset.category === category;
+  });
+  if (!imgNames.length) {
+    await appAlert(`Select one or more cards in ${category} to rename.`);
+    return;
+  }
+  const prefix = await appPrompt(`Enter filename prefix for selected cards in ${category}:`);
   if (prefix === null) return;
 
   saveOpenCategoryWindows();
@@ -11292,7 +11327,7 @@ async function renameCategoryPairs(category) {
   const res = await fetch('/rename_all_pairs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prefix, category })
+    body: JSON.stringify({ prefix, category, img_names: imgNames })
   });
   const data = await res.json();
   if (!res.ok || !data.ok) {
@@ -13488,6 +13523,7 @@ document.addEventListener('keydown', async (e) => {
             img_names: pairClipboard.img_names,
             category: activeCategory,
             mode: pairClipboard.mode,
+            source_folder: pairClipboard.source_folder,
           }),
         });
         const data = await res.json();
@@ -13495,8 +13531,20 @@ document.addEventListener('keydown', async (e) => {
           await appAlert(data.error || 'Move/copy failed.');
           return;
         }
+        if (Array.isArray(data.errors) && data.errors.length) {
+          await appAlert(
+            `${data.changed?.length || 0} pair(s) completed, ${data.errors.length} failed:\n\n` +
+            data.errors.join('\n')
+          );
+        }
         const targetCategory = data.category || activeCategory;
-        if (data.mode === 'copy') {
+        if (data.cross_folder) {
+          if (data.mode === 'move') clearPairClipboard();
+          suppressBeforeUnload = true;
+          window.location.assign('/');
+          return;
+        }
+        if (data.mode === 'copy' || data.cross_folder) {
           await importRenderedPairCards(data.changed || []);
         } else {
           const targetGrid = document.querySelector(`.category-window[data-category="${CSS.escape(targetCategory)}"] .grid`);
@@ -13513,7 +13561,7 @@ document.addEventListener('keydown', async (e) => {
           updateAllWindowStatuses();
           refreshDesktopCategoryCountsFromCards();
         }
-        clearPairClipboard();
+        if (data.mode === 'move') clearPairClipboard();
         setStatusbarMessage(`${data.mode === 'copy' ? 'Copied' : 'Moved'} ${(data.changed || []).length} card${(data.changed || []).length === 1 ? '' : 's'} to ${targetCategory}.`);
       } catch (err) {
         await appAlert(`Move/copy failed: ${err}`);
@@ -13547,10 +13595,6 @@ document.addEventListener('keydown', async (e) => {
     return;
   }
 
-  if (e.key === 'Escape' && !typingIntoField) {
-    clearPairClipboard();
-    return;
-  }
 });
 
 document.querySelectorAll('.crop-stage img').forEach(img => {
@@ -13647,6 +13691,8 @@ def index():
         pairs=pair_dicts,
         message=message,
         folder_name=folder_name,
+        current_folder_path=current_folder or "",
+        app_session_id=APP_SESSION_ID,
         selected_crop_base=selected_crop_base,
         bucket_options_json=bucket_options_json,
         joy_model_data_json=json.dumps(JOYCLI_MODEL_OPTIONS),
@@ -14140,26 +14186,46 @@ def rename_all_pairs():
 
     data = request.get_json(force=True) or {}
     prefix = str(data.get("prefix", ""))
+    requested_names = {
+        Path(str(name)).name
+        for name in data.get("img_names") or []
+        if isinstance(name, str) and Path(name).name == name
+    }
     category = data.get("category") or None
     category = normalize_category_name(category) if category else None
+    if not requested_names:
+        return jsonify({"ok": False, "error": "No cards selected."}), 400
 
     ordered_pairs = [
         pair for pair in pairs_cache
         if pair_exists(current_folder, pair[0])
+        and pair[0] in requested_names
         and (not category or get_pair_category(pair[0]) == category)
     ]
     if not ordered_pairs:
-        return jsonify({"ok": False, "error": "No image/text pairs found."}), 400
+        return jsonify({"ok": False, "error": "No selected image/text pairs found."}), 400
 
     temp_records = []
     renamed_categories = dict(category_assignments)
+    selected_names = {pair[0] for pair in ordered_pairs}
+    reserved_stems = {
+        Path(pair[0]).stem.casefold()
+        for pair in pairs_cache
+        if pair[0] not in selected_names and pair_exists(current_folder, pair[0])
+    }
     try:
         for i, (img_name, _) in enumerate(ordered_pairs):
             img_path = os.path.join(current_folder, img_name)
             txt_path = os.path.splitext(img_path)[0] + ".txt"
             json_path = os.path.splitext(img_path)[0] + ".json"
             ext = os.path.splitext(img_name)[1]
-            target_stem = f"{prefix}{i:05d}"
+            target_stem_base = f"{prefix}{i:05d}"
+            target_stem = target_stem_base
+            suffix = 2
+            while target_stem.casefold() in reserved_stems:
+                target_stem = f"{target_stem_base}_{suffix}"
+                suffix += 1
+            reserved_stems.add(target_stem.casefold())
             temp_img = os.path.join(current_folder, f"__renaming__{i:05d}{ext}")
             temp_txt = os.path.join(current_folder, f"__renaming__{i:05d}.txt")
             temp_json = os.path.join(current_folder, f"__renaming__{i:05d}.json")
@@ -14204,8 +14270,8 @@ def rename_all_pairs():
     pairs_cache = load_pairs(current_folder)
     category_assignments = renamed_categories
     save_category_assignments(current_folder, category_assignments)
-    message = f"Renamed {len(ordered_pairs)} image/text pair(s)" + (f" in {category}." if category else ".")
-    return jsonify({"ok": True})
+    message = f"Renamed {len(ordered_pairs)} selected image/text pair(s)" + (f" in {category}." if category else ".")
+    return jsonify({"ok": True, "renamed": len(ordered_pairs)})
 
 
 @app.route("/captions_json")
@@ -14411,11 +14477,14 @@ def clone_pair():
         return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
-    img_name = data.get("img_name")
-    if not img_name:
+    img_name = str(data.get("img_name") or "")
+    if not img_name or Path(img_name).name != img_name:
         return jsonify({"ok": False, "error": "Missing image name."}), 400
 
-    src_img = os.path.join(current_folder, img_name)
+    source_folder = os.path.abspath(str(data.get("source_folder") or current_folder))
+    if not os.path.isdir(source_folder):
+        return jsonify({"ok": False, "error": "Clipboard source folder no longer exists."}), 404
+    src_img = os.path.join(source_folder, img_name)
     if not os.path.exists(src_img):
         return jsonify({"ok": False, "error": "Image no longer exists."}), 404
 
@@ -14435,7 +14504,7 @@ def clone_pair():
             Path(target_txt).write_text("", encoding="utf-8")
         if os.path.exists(src_json):
             shutil.copy2(src_json, target_json)
-        src_mask = mask_path_for_image(current_folder, img_name)
+        src_mask = mask_path_for_image(source_folder, img_name)
         target_mask = mask_path_for_image(current_folder, target_name)
         if src_mask and target_mask and src_mask.exists():
             target_mask.parent.mkdir(exist_ok=True)
@@ -14443,7 +14512,9 @@ def clone_pair():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
-    category_assignments[target_name] = category_id_for_value(category_assignments.get(img_name, DEFAULT_CATEGORY))
+    source_is_current = os.path.normcase(source_folder) == os.path.normcase(os.path.abspath(current_folder))
+    source_category = category_assignments.get(img_name, DEFAULT_CATEGORY) if source_is_current else DEFAULT_CATEGORY
+    category_assignments[target_name] = category_id_for_value(source_category)
     save_category_assignments(current_folder, category_assignments)
     pairs_cache = load_pairs(current_folder)
 
@@ -14763,31 +14834,71 @@ def move_pairs():
     img_names = [str(name) for name in data.get("img_names") or [] if isinstance(name, str)]
     category = normalize_category_name(data.get("category"))
     mode = str(data.get("mode") or "move").lower()
+    source_folder = os.path.abspath(str(data.get("source_folder") or current_folder))
     if not img_names:
         return jsonify({"ok": False, "error": "No images selected."}), 400
+    if not os.path.isdir(source_folder):
+        return jsonify({"ok": False, "error": "Clipboard source folder no longer exists."}), 404
+    if any(Path(name).name != name for name in img_names):
+        return jsonify({"ok": False, "error": "Invalid image name."}), 400
 
     changed = []
-    if mode == "copy":
-        folder_path = Path(current_folder)
+    errors = []
+    target_folder_path = Path(current_folder)
+    source_folder_path = Path(source_folder)
+    cross_folder = os.path.normcase(source_folder) != os.path.normcase(os.path.abspath(current_folder))
+    if mode == "copy" or cross_folder:
+        source_assignments = None
+        if cross_folder and mode == "move":
+            source_assignments, source_folders, source_groups = load_category_state(source_folder)
         for img_name in img_names:
-            src_img = folder_path / img_name
+            src_img = source_folder_path / img_name
             if not src_img.exists() or src_img.suffix.lower() not in IMAGE_EXTENSIONS:
+                errors.append(f"{img_name}: source image no longer exists")
                 continue
             target_name = make_unique_image_name(current_folder, src_img.stem, src_img.suffix)
-            target_img = folder_path / target_name
-            shutil.copy2(src_img, target_img)
-            src_txt = src_img.with_suffix(".txt")
-            target_txt = target_img.with_suffix(".txt")
-            if src_txt.exists():
-                shutil.copy2(src_txt, target_txt)
-            else:
-                target_txt.write_text("", encoding="utf-8")
-            src_json = src_img.with_suffix(".json")
-            target_json = target_img.with_suffix(".json")
-            if src_json.exists():
-                shutil.copy2(src_json, target_json)
-            category_assignments[target_name] = category_id_for_value(category)
-            changed.append(target_name)
+            target_img = target_folder_path / target_name
+            transfer = shutil.move if mode == "move" else shutil.copy2
+            transferred_paths = []
+            try:
+                transfer(src_img, target_img)
+                transferred_paths.append((target_img, src_img if mode == "move" else None))
+                src_txt = src_img.with_suffix(".txt")
+                target_txt = target_img.with_suffix(".txt")
+                if src_txt.exists():
+                    transfer(src_txt, target_txt)
+                    transferred_paths.append((target_txt, src_txt if mode == "move" else None))
+                else:
+                    target_txt.write_text("", encoding="utf-8")
+                    transferred_paths.append((target_txt, None))
+                src_json = src_img.with_suffix(".json")
+                target_json = target_img.with_suffix(".json")
+                if src_json.exists():
+                    transfer(src_json, target_json)
+                    transferred_paths.append((target_json, src_json if mode == "move" else None))
+                src_mask = mask_path_for_image(source_folder, img_name)
+                target_mask = mask_path_for_image(current_folder, target_name)
+                if src_mask and target_mask and src_mask.exists():
+                    target_mask.parent.mkdir(exist_ok=True)
+                    transfer(src_mask, target_mask)
+                    transferred_paths.append((target_mask, src_mask if mode == "move" else None))
+                category_assignments[target_name] = category_id_for_value(category)
+                if source_assignments is not None:
+                    source_assignments.pop(img_name, None)
+                changed.append(target_name)
+            except Exception as exc:
+                for created_path, original_path in reversed(transferred_paths):
+                    try:
+                        if original_path is not None:
+                            original_path.parent.mkdir(exist_ok=True)
+                            shutil.move(created_path, original_path)
+                        else:
+                            created_path.unlink()
+                    except Exception:
+                        pass
+                errors.append(f"{img_name}: {exc}")
+        if source_assignments is not None:
+            save_category_state(source_folder, source_assignments, source_folders, source_groups)
     else:
         for img_name in img_names:
             if pair_exists(current_folder, img_name):
@@ -14796,7 +14907,14 @@ def move_pairs():
 
     save_category_assignments(current_folder, category_assignments)
     pairs_cache = load_pairs(current_folder)
-    return jsonify({"ok": True, "changed": changed, "category": category, "mode": mode})
+    return jsonify({
+        "ok": True,
+        "changed": changed,
+        "category": category,
+        "mode": mode,
+        "cross_folder": cross_folder,
+        "errors": errors,
+    })
 
 
 @app.route("/replace_all", methods=["POST"])
@@ -14941,11 +15059,17 @@ def summary():
 
     summary_items = [
         {"bucket": bucket, "count": count, "valid": status == "selected", "status": status}
-        for (bucket, status), count in sorted(bucket_counts.items(), key=lambda x: x[0][0])
+        for (bucket, status), count in sorted(
+            bucket_counts.items(),
+            key=lambda item: (
+                {"selected": 0, "other": 1, "invalid": 2}.get(item[0][1], 3),
+                item[0][0],
+            ),
+        )
     ]
     bucket_base_items = [
         {"base": base, "count": count}
-        for base, count in sorted(bucket_base_counts.items())
+        for base, count in sorted(bucket_base_counts.items(), reverse=True)
     ]
     summary_text = "<div><b>Resolution distribution:</b></div>"
     for item in summary_items:

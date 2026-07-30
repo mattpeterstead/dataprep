@@ -42,12 +42,18 @@ IMAGE_MIME_TO_EXTENSION = {
     "image/avif": ".avif",
 }
 APP_DIR = Path(__file__).resolve().parent
+APP_SESSION_ID = hashlib.sha256(f"{os.getpid()}:{time.time_ns()}".encode()).hexdigest()[:16]
 SETTINGS_DIR = APP_DIR / "settings"
 LAST_APP_FILE = SETTINGS_DIR / ".dataset_forge_last_app"
 IMAGE_FOLDER_HANDOFF_FILE = SETTINGS_DIR / ".dataset_forge_image_folder_handoff"
 CATEGORY_META_FILENAME = ".dataprep_categories.json"
 CATEGORY_PRESETS_FILE = SETTINGS_DIR / "category_presets.json"
-PROTECTED_CATEGORY_PRESET_NAME = "character"
+PROTECTED_CATEGORY_PRESET_NAMES = ("character", "character extended")
+CHARACTER_BASIC_CATEGORIES = (
+    {"name": "Close-up", "icon": "portrait_front.png", "color": "#22c55e", "group_id": "close-up"},
+    {"name": "Medium", "icon": "kneeup_front.png", "color": "#eab308", "group_id": "medium"},
+    {"name": "Full body", "icon": "fullbody_front.png", "color": "#ef4444", "group_id": "full-body"},
+)
 SYSTEM_PROMPT_PRESETS_FILE = SETTINGS_DIR / "system_prompt_presets.json"
 PROTECTED_SYSTEM_PROMPT_PRESET_NAME = "Simple character caption"
 SYSTEM_PROMPT_PRESET_BACKENDS = {"qwen3_vl", "external_api"}
@@ -2397,8 +2403,35 @@ def character_category_preset():
     return {
         "protected": True,
         "groups": groups,
+        "categories": normalize_category_folders(
+            [dict(item) for item in CHARACTER_BASIC_CATEGORIES],
+            groups,
+        ),
+    }
+
+
+def character_extended_category_preset():
+    groups = default_category_groups()
+    return {
+        "protected": True,
+        "groups": groups,
         "categories": default_category_folders(groups),
     }
+
+
+def built_in_category_presets():
+    return {
+        "character": character_category_preset(),
+        "character extended": character_extended_category_preset(),
+    }
+
+
+def is_protected_category_preset_name(name):
+    wanted = str(name or "").casefold()
+    return any(
+        protected_name.casefold() == wanted
+        for protected_name in PROTECTED_CATEGORY_PRESET_NAMES
+    )
 
 
 def normalize_category_preset_name(value):
@@ -2427,7 +2460,7 @@ def normalize_category_preset(data, protected=False):
 
 
 def load_category_presets():
-    presets = {PROTECTED_CATEGORY_PRESET_NAME: character_category_preset()}
+    presets = built_in_category_presets()
     try:
         raw = json.loads(CATEGORY_PRESETS_FILE.read_text(encoding="utf-8"))
     except Exception:
@@ -2439,7 +2472,7 @@ def load_category_presets():
                 name = normalize_category_preset_name(raw_name)
             except ValueError:
                 continue
-            if name.casefold() == PROTECTED_CATEGORY_PRESET_NAME.casefold():
+            if is_protected_category_preset_name(name):
                 continue
             presets[name] = normalize_category_preset(raw_preset, protected=False)
     return presets
@@ -2447,10 +2480,10 @@ def load_category_presets():
 
 def save_category_presets_file(presets):
     SETTINGS_DIR.mkdir(exist_ok=True)
-    clean = {PROTECTED_CATEGORY_PRESET_NAME: character_category_preset()}
+    clean = built_in_category_presets()
     for raw_name, raw_preset in (presets or {}).items():
         name = normalize_category_preset_name(raw_name)
-        if name.casefold() == PROTECTED_CATEGORY_PRESET_NAME.casefold():
+        if is_protected_category_preset_name(name):
             continue
         clean[name] = normalize_category_preset(raw_preset, protected=False)
     payload = {"version": 1, "presets": clean}
@@ -2467,19 +2500,27 @@ def find_category_preset(presets, name):
     )
 
 
+def default_character_category_state():
+    preset = character_category_preset()
+    return (
+        {},
+        [dict(item) for item in preset["categories"]],
+        [dict(item) for item in preset["groups"]],
+    )
+
+
 def load_category_state(folder):
-    groups = default_category_groups()
     if not folder:
-        return {}, default_category_folders(groups), groups
+        return default_character_category_state()
     path = get_category_meta_path(folder)
     if not path.exists():
-        return {}, default_category_folders(groups), groups
+        return default_character_category_state()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {}, default_category_folders(groups), groups
+        return default_character_category_state()
     if not isinstance(raw, dict):
-        return {}, default_category_folders(groups), groups
+        return default_character_category_state()
     has_new_schema = isinstance(raw.get("assignments"), dict) or isinstance(raw.get("folders"), list)
     groups = normalize_category_groups(raw.get("groups") if isinstance(raw.get("groups"), list) else None)
     folders = normalize_category_folders(raw.get("folders") if has_new_schema else None, groups)
@@ -5987,7 +6028,7 @@ body {
       <summary>Edit</summary>
       <div class="top-menu-popover">
         <button type="button" id="maskModeBtn" class="mask-mode-btn" title="Open mask tools" aria-pressed="false"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_masking.svg" alt="">Masking</span></button>
-        <button type="button" id="renameAllBtn" title="Rename all image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.svg" alt="">Rename</span></button>
+        <button type="button" id="renameAllBtn" title="Rename selected image and caption pairs"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_rename_all.svg" alt="">Rename</span></button>
         <button type="button" id="openWatermarkModalBtn" title="Remove watermarks with an inpainting mask"><span class="toolbar-btn-content"><img class="toolbar-btn-icon" src="/category_icon/btn_watermark_removal.svg" alt="">Remove watermark</span></button>
       </div>
     </details>
@@ -6670,6 +6711,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
         <div class="categorize-preset-controls">
           <select id="categoryPresetSelect" aria-label="Category preset">
             <option value="character">character (built-in)</option>
+            <option value="character extended">character extended (built-in)</option>
           </select>
           <button type="button" id="loadCategoryPresetBtn">Load</button>
           <button type="button" id="saveCategoryPresetBtn">Save</button>
@@ -7003,7 +7045,7 @@ Keep the caption short and direct, usually 12-30 words. Output only the caption.
 
       <h4>Categories and statistics</h4>
       <p>Use <b>Tools &gt; Stats &gt; Categorize images</b> to organize images into categories and category groups. Hold <kbd>Ctrl</kbd> while clicking groups or categories to select several, then press <kbd>Delete</kbd> to remove them together.</p>
-      <p>Use Load, Save, and Delete to manage category presets. The built-in <b>character</b> preset cannot be overwritten or deleted. The same window can use Qwen3-VL to propose categories for all images or only Undefined images; review the suggestions before applying them.</p>
+      <p>Use Load, Save, and Delete to manage category presets. The built-in <b>character</b> and <b>character extended</b> presets cannot be overwritten or deleted. The same window can use Qwen3-VL to propose categories for all images or only Undefined images; review the suggestions before applying them.</p>
     </div>
   </div>
 </div>
@@ -7164,6 +7206,8 @@ let CATEGORY_GROUPS = JSON.parse(document.getElementById('category-groups-data')
 let CATEGORY_ICON_BY_NAME = Object.fromEntries(CATEGORY_DEFS.map(item => [item.name, item.icon]));
 const CATEGORY_VISIBILITY_KEY = 'caption_app_categories_visible';
 const HAS_OPEN_FOLDER = {{ 'true' if folder_name else 'false' }};
+const FOLDER_KEY = {{ current_folder_path|tojson }};
+const APP_SESSION_ID = {{ app_session_id|tojson }};
 const CATEGORY_SYSTEM_ENABLED = {{ categories_enabled|tojson }};
 const IMAGE_FILE_PATTERN = /\.(png|jpe?g|gif|bmp|webp|avif)$/i;
 const dropPasteOverlay = document.getElementById('dropPasteOverlay');
@@ -7316,7 +7360,19 @@ function setStatusbarMessage(text) {
 }
 
 const selectedSimpleCards = new Set();
-let copiedSimpleImageNames = [];
+const SIMPLE_PAIR_CLIPBOARD_STORAGE_KEY = 'dataprep_simple_pair_clipboard';
+function loadSimplePairClipboard() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(SIMPLE_PAIR_CLIPBOARD_STORAGE_KEY) || 'null');
+    return value && value.app_session_id === APP_SESSION_ID &&
+      Array.isArray(value.img_names) && value.img_names.length
+      ? value
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+let simplePairClipboard = loadSimplePairClipboard();
 const simpleStatusbarFolder = document.querySelector('.statusbar-folder');
 const simpleStatusbarDefaultFolderText = simpleStatusbarFolder?.textContent.trim() || '';
 
@@ -8940,12 +8996,12 @@ async function deleteSimpleCards(cards) {
   setStatusbarMessage(`Deleted ${selected.length} image/caption pair(s).`);
 }
 
-async function cloneSimpleCardByName(img, insertAfterCard = null) {
+async function cloneSimpleCardByName(img, insertAfterCard = null, sourceFolder = FOLDER_KEY) {
   const sourceCard = document.querySelector(`.pair-card[data-img="${CSS.escape(img)}"]`);
   const res = await fetch('/clone_pair', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ img_name: img }),
+    body: JSON.stringify({ img_name: img, source_folder: sourceFolder }),
   });
   const data = await res.json();
   if (!res.ok || !data.ok || !data.pair) {
@@ -10235,17 +10291,22 @@ async function saveAllCards() {
 }
 
 async function renameAllPairs() {
-  const prefix = await appPrompt('Enter filename prefix for all images and captions:');
+  const imgNames = selectedSimpleCardList().map(card => card.dataset.img).filter(Boolean);
+  if (!imgNames.length) {
+    await appAlert('Select one or more cards to rename.');
+    return;
+  }
+  const prefix = await appPrompt('Enter filename prefix for selected images and captions:');
   if (prefix === null) return;
 
   const res = await fetch('/rename_all_pairs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prefix })
+    body: JSON.stringify({ prefix, img_names: imgNames })
   });
   const data = await res.json();
   if (!res.ok || !data.ok) {
-    await appAlert(data.error || 'Rename all failed');
+    await appAlert(data.error || 'Rename selected failed');
     return;
   }
   suppressBeforeUnload = true;
@@ -10278,22 +10339,37 @@ document.addEventListener('keydown', async event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
     if (!selected.length) return;
     event.preventDefault();
-    copiedSimpleImageNames = selected.map(card => card.dataset.img).filter(Boolean);
-    setStatusbarMessage(`Copied ${copiedSimpleImageNames.length} selected image/caption pair(s).`);
+    simplePairClipboard = {
+      img_names: selected.map(card => card.dataset.img).filter(Boolean),
+      source_folder: FOLDER_KEY,
+      app_session_id: APP_SESSION_ID,
+    };
+    sessionStorage.setItem(SIMPLE_PAIR_CLIPBOARD_STORAGE_KEY, JSON.stringify(simplePairClipboard));
+    setStatusbarMessage(`Copied ${simplePairClipboard.img_names.length} selected image/caption pair(s).`);
     return;
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
-    if (!copiedSimpleImageNames.length) return;
+    if (!simplePairClipboard?.img_names?.length) return;
     event.preventDefault();
-    setStatusbarMessage(`Copying ${copiedSimpleImageNames.length} image/caption pair(s)...`);
+    setStatusbarMessage(`Copying ${simplePairClipboard.img_names.length} image/caption pair(s)...`);
     try {
-      let insertAfter = selected[selected.length - 1] || document.querySelector('.pair-card');
-      for (const img of copiedSimpleImageNames) {
-        const newCard = await cloneSimpleCardByName(img, insertAfter);
-        if (newCard) insertAfter = newCard;
+      const response = await fetch('/clone_pairs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(simplePairClipboard),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Copy failed');
       }
-      clearSimpleCardSelection();
-      setStatusbarMessage(`Copied ${copiedSimpleImageNames.length} image/caption pair(s).`);
+      if (Array.isArray(data.errors) && data.errors.length) {
+        await appAlert(
+          `${data.changed?.length || 0} pair(s) copied, ${data.errors.length} failed:\n\n` +
+          data.errors.join('\n')
+        );
+      }
+      suppressBeforeUnload = true;
+      window.location.assign('/');
     } catch (err) {
       await appAlert(err?.message || 'Copy failed');
     }
@@ -11739,8 +11815,7 @@ function buildSummaryHtml(data) {
       .summary-grid:not(.categories-visible) .summary-aspect-card{grid-column:1 / -1;}
       .summary-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px;}
       .summary-card-head .summary-chart-title{margin-bottom:0;}
-      .summary-categorize-btn{justify-self:end;padding:4px 8px;font-size:11px;line-height:1.2;background:color-mix(in srgb,var(--ok) 78%,#000);border-color:color-mix(in srgb,var(--ok) 78%,#000);color:#fff;}
-      .summary-categorize-btn:hover{background:color-mix(in srgb,var(--ok) 88%,#000);border-color:color-mix(in srgb,var(--ok) 88%,#000);color:#fff;}
+      .summary-categorize-btn{justify-self:end;padding:4px 8px;font-size:11px;line-height:1.2;}
       .summary-chart-title{font-weight:800;margin-bottom:5px;font-size:13px;}
       .summary-bar-chart{display:flex;align-items:flex-end;gap:4px;min-height:126px;padding:2px 3px 0;border-left:1px solid var(--border);border-bottom:1px solid var(--border);overflow-x:auto;}
       .summary-bar-wrap{display:grid;grid-template-rows:auto 78px 38px;align-items:end;justify-items:center;min-width:25px;}
@@ -13793,6 +13868,8 @@ def index():
         pairs=pair_dicts,
         message=message,
         folder_name=folder_name,
+        current_folder_path=current_folder or "",
+        app_session_id=APP_SESSION_ID,
         selected_crop_base=selected_crop_base,
         bucket_options_json=bucket_options_json,
         joy_model_data_json=json.dumps(JOYCLI_MODEL_OPTIONS),
@@ -14266,20 +14343,43 @@ def rename_all_pairs():
 
     data = request.get_json(force=True) or {}
     prefix = str(data.get("prefix", ""))
+    requested_names = {
+        Path(str(name)).name
+        for name in data.get("img_names") or []
+        if isinstance(name, str) and Path(name).name == name
+    }
+    if not requested_names:
+        return jsonify({"ok": False, "error": "No cards selected."}), 400
 
-    ordered_pairs = [pair for pair in pairs_cache if pair_exists(current_folder, pair[0])]
+    ordered_pairs = [
+        pair
+        for pair in pairs_cache
+        if pair[0] in requested_names and pair_exists(current_folder, pair[0])
+    ]
     if not ordered_pairs:
-        return jsonify({"ok": False, "error": "No image/text pairs found."}), 400
+        return jsonify({"ok": False, "error": "No selected image/text pairs found."}), 400
 
     temp_records = []
-    renamed_categories = {}
+    renamed_categories = dict(category_assignments)
+    selected_names = {pair[0] for pair in ordered_pairs}
+    reserved_stems = {
+        Path(pair[0]).stem.casefold()
+        for pair in pairs_cache
+        if pair[0] not in selected_names and pair_exists(current_folder, pair[0])
+    }
     try:
         for i, (img_name, _) in enumerate(ordered_pairs):
             img_path = os.path.join(current_folder, img_name)
             txt_path = os.path.splitext(img_path)[0] + ".txt"
             json_path = os.path.splitext(img_path)[0] + ".json"
             ext = os.path.splitext(img_name)[1]
-            target_stem = f"{prefix}{i:05d}"
+            target_stem_base = f"{prefix}{i:05d}"
+            target_stem = target_stem_base
+            suffix = 2
+            while target_stem.casefold() in reserved_stems:
+                target_stem = f"{target_stem_base}_{suffix}"
+                suffix += 1
+            reserved_stems.add(target_stem.casefold())
             temp_img = os.path.join(current_folder, f"__renaming__{i:05d}{ext}")
             temp_txt = os.path.join(current_folder, f"__renaming__{i:05d}.txt")
             temp_json = os.path.join(current_folder, f"__renaming__{i:05d}.json")
@@ -14315,6 +14415,8 @@ def rename_all_pairs():
                     final_mask.parent.mkdir(exist_ok=True)
                     os.replace(temp_mask, final_mask)
             renamed_categories[final_name] = normalize_category_name(category_assignments.get(old_img_name, DEFAULT_CATEGORY))
+            if final_name != old_img_name:
+                renamed_categories.pop(old_img_name, None)
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -14322,8 +14424,8 @@ def rename_all_pairs():
     pairs_cache = load_pairs(current_folder)
     category_assignments = renamed_categories
     save_category_assignments(current_folder, category_assignments)
-    message = "Renamed all image/text pairs."
-    return jsonify({"ok": True})
+    message = f"Renamed {len(ordered_pairs)} selected image/text pair(s)."
+    return jsonify({"ok": True, "renamed": len(ordered_pairs)})
 
 
 @app.route("/captions_json")
@@ -14522,6 +14624,80 @@ def save_pair():
 
 
 
+@app.route("/clone_pairs", methods=["POST"])
+def clone_pairs():
+    global pairs_cache, message, category_assignments
+    if not current_folder:
+        return jsonify({"ok": False, "error": "No folder selected."}), 400
+
+    data = request.get_json(force=True) or {}
+    img_names = [
+        str(name)
+        for name in data.get("img_names") or []
+        if isinstance(name, str) and Path(name).name == name
+    ]
+    source_folder = os.path.abspath(str(data.get("source_folder") or current_folder))
+    if not img_names:
+        return jsonify({"ok": False, "error": "Clipboard contains no images."}), 400
+    if not os.path.isdir(source_folder):
+        return jsonify({"ok": False, "error": "Clipboard source folder no longer exists."}), 404
+
+    source_is_current = os.path.normcase(source_folder) == os.path.normcase(os.path.abspath(current_folder))
+    changed = []
+    errors = []
+    for img_name in img_names:
+        src_img = Path(source_folder) / img_name
+        if not src_img.is_file() or src_img.suffix.lower() not in IMAGE_EXTENSIONS:
+            errors.append(f"{img_name}: source image no longer exists")
+            continue
+
+        target_name = make_unique_image_name(current_folder, src_img.stem, src_img.suffix)
+        target_img = Path(current_folder) / target_name
+        created_paths = []
+        try:
+            shutil.copy2(src_img, target_img)
+            created_paths.append(target_img)
+
+            src_txt = src_img.with_suffix(".txt")
+            target_txt = target_img.with_suffix(".txt")
+            if src_txt.exists():
+                shutil.copy2(src_txt, target_txt)
+            else:
+                target_txt.write_text("", encoding="utf-8")
+            created_paths.append(target_txt)
+
+            src_json = src_img.with_suffix(".json")
+            target_json = target_img.with_suffix(".json")
+            if src_json.exists():
+                shutil.copy2(src_json, target_json)
+                created_paths.append(target_json)
+
+            src_mask = mask_path_for_image(source_folder, img_name)
+            target_mask = mask_path_for_image(current_folder, target_name)
+            if src_mask and target_mask and src_mask.exists():
+                target_mask.parent.mkdir(exist_ok=True)
+                shutil.copy2(src_mask, target_mask)
+                created_paths.append(target_mask)
+
+            source_category = category_assignments.get(img_name, DEFAULT_CATEGORY) if source_is_current else DEFAULT_CATEGORY
+            category_assignments[target_name] = normalize_category_name(source_category)
+            changed.append(target_name)
+        except Exception as exc:
+            for created_path in reversed(created_paths):
+                try:
+                    created_path.unlink()
+                except Exception:
+                    pass
+            errors.append(f"{img_name}: {exc}")
+
+    save_category_assignments(current_folder, category_assignments)
+    pairs_cache = load_pairs(current_folder)
+    message = f"Copied {len(changed)} image/caption pair(s)."
+    if errors:
+        message += f" {len(errors)} failed."
+    return jsonify({"ok": True, "changed": changed, "errors": errors})
+
+
 @app.route("/clone_pair", methods=["POST"])
 def clone_pair():
     global pairs_cache, message, category_assignments
@@ -14529,11 +14705,14 @@ def clone_pair():
         return jsonify({"ok": False, "error": "No folder selected."}), 400
 
     data = request.get_json(force=True) or {}
-    img_name = data.get("img_name")
-    if not img_name:
+    img_name = str(data.get("img_name") or "")
+    if not img_name or Path(img_name).name != img_name:
         return jsonify({"ok": False, "error": "Missing image name."}), 400
 
-    src_img = os.path.join(current_folder, img_name)
+    source_folder = os.path.abspath(str(data.get("source_folder") or current_folder))
+    if not os.path.isdir(source_folder):
+        return jsonify({"ok": False, "error": "Clipboard source folder no longer exists."}), 404
+    src_img = os.path.join(source_folder, img_name)
     if not os.path.exists(src_img):
         return jsonify({"ok": False, "error": "Image no longer exists."}), 404
 
@@ -14553,7 +14732,7 @@ def clone_pair():
             Path(target_txt).write_text("", encoding="utf-8")
         if os.path.exists(src_json):
             shutil.copy2(src_json, target_json)
-        src_mask = mask_path_for_image(current_folder, img_name)
+        src_mask = mask_path_for_image(source_folder, img_name)
         target_mask = mask_path_for_image(current_folder, target_name)
         if src_mask and target_mask and src_mask.exists():
             target_mask.parent.mkdir(exist_ok=True)
@@ -14561,7 +14740,9 @@ def clone_pair():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
-    category_assignments[target_name] = normalize_category_name(category_assignments.get(img_name, DEFAULT_CATEGORY))
+    source_is_current = os.path.normcase(source_folder) == os.path.normcase(os.path.abspath(current_folder))
+    source_category = category_assignments.get(img_name, DEFAULT_CATEGORY) if source_is_current else DEFAULT_CATEGORY
+    category_assignments[target_name] = normalize_category_name(source_category)
     save_category_assignments(current_folder, category_assignments)
     pairs_cache = load_pairs(current_folder)
 
@@ -14942,10 +15123,10 @@ def save_category_preset():
         name = normalize_category_preset_name(data.get("name"))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    if name.casefold() == PROTECTED_CATEGORY_PRESET_NAME.casefold():
+    if is_protected_category_preset_name(name):
         return jsonify({
             "ok": False,
-            "error": 'The built-in "character" preset cannot be overwritten.',
+            "error": f'The built-in "{name}" preset cannot be overwritten.',
             "protected": True,
         }), 403
 
@@ -14979,10 +15160,10 @@ def delete_category_preset():
     preset_name, preset = find_category_preset(presets, data.get("name"))
     if not preset:
         return jsonify({"ok": False, "error": "Category preset not found."}), 404
-    if preset.get("protected") or preset_name.casefold() == PROTECTED_CATEGORY_PRESET_NAME.casefold():
+    if preset.get("protected") or is_protected_category_preset_name(preset_name):
         return jsonify({
             "ok": False,
-            "error": 'The built-in "character" preset cannot be deleted.',
+            "error": f'The built-in "{preset_name}" preset cannot be deleted.',
             "protected": True,
         }), 403
     presets.pop(preset_name, None)
@@ -15346,11 +15527,17 @@ def summary():
 
     summary_items = [
         {"bucket": bucket, "count": count, "valid": status == "selected", "status": status}
-        for (bucket, status), count in sorted(bucket_counts.items(), key=lambda x: x[0][0])
+        for (bucket, status), count in sorted(
+            bucket_counts.items(),
+            key=lambda item: (
+                {"selected": 0, "other": 1, "invalid": 2}.get(item[0][1], 3),
+                item[0][0],
+            ),
+        )
     ]
     bucket_base_items = [
         {"base": base, "count": count}
-        for base, count in sorted(bucket_base_counts.items())
+        for base, count in sorted(bucket_base_counts.items(), reverse=True)
     ]
     summary_text = "<div><b>Resolution distribution:</b></div>"
     for item in summary_items:
